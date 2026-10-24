@@ -41,6 +41,17 @@ const PLAYER_SPRITE_SCALE = 0.46;
 /** Steps per second while walking. */
 const STEP_RATE = 6;
 
+/**
+ * Each senior's sheet (scripts/build-npc-sprites.py): one row of standing
+ * down, right, left, up, then a wave, feet 2px above the bottom. They share
+ * the player's scale, so everyone stands the same height.
+ */
+const npcSheetKey = (npc: OfficeNpc) => `npc-sheet:${npc.key}`;
+const NPC_FRAME_W = 76;
+const NPC_FRAME_H = 133;
+const NPC_STAND = 0;
+const NPC_WAVE = 4;
+
 /** Each zoom step multiplies or divides the zoom by this. */
 const ZOOM_STEP = 1.25;
 const MAX_ZOOM = 2.4;
@@ -106,6 +117,8 @@ export class OfficeScene extends Phaser.Scene {
   private currentRoomKey: string | null = null;
   private currentPrompt: string | null = null;
   private nearbyNpc: OfficeNpc | null = null;
+  /** Seniors drawn from their sheets, by NPC key; they wave when you come near. */
+  private npcSprites = new Map<string, Phaser.GameObjects.Image>();
   private keycap!: Phaser.GameObjects.Container;
   private speech!: Phaser.GameObjects.Container;
   private speechName!: Phaser.GameObjects.Text;
@@ -144,6 +157,12 @@ export class OfficeScene extends Phaser.Scene {
       frameWidth: FRAME_W,
       frameHeight: FRAME_H,
     });
+    for (const npc of NPCS) {
+      this.load.spritesheet(npcSheetKey(npc), `/img/office/npcs/${npc.key}.png`, {
+        frameWidth: NPC_FRAME_W,
+        frameHeight: NPC_FRAME_H,
+      });
+    }
   }
 
   create(): void {
@@ -467,7 +486,14 @@ export class OfficeScene extends Phaser.Scene {
         ease: 'Sine.easeInOut',
       });
 
-      const body = this.personImage(this.personTexture(npc.key, this.lookFor(npc, index), 'down', 0));
+      const sheet = npcSheetKey(npc);
+      const body = this.textures.exists(sheet)
+        ? this.add
+            .image(0, 0, sheet, NPC_STAND)
+            .setOrigin(0.5, (NPC_FRAME_H - 2) / NPC_FRAME_H)
+            .setScale(PLAYER_SPRITE_SCALE)
+        : this.personImage(this.personTexture(npc.key, this.lookFor(npc, index), 'down', 0));
+      if (this.textures.exists(sheet)) this.npcSprites.set(npc.key, body);
 
       const name = this.add
         .text(0, 6, npc.name, {
@@ -483,7 +509,7 @@ export class OfficeScene extends Phaser.Scene {
       container.add([ring, body, name]);
 
       // A small idle bob keeps the office from feeling like a still picture.
-      const base = PERSON_SCALE / PERSON_RES;
+      const base = body.scaleX;
       this.tweens.add({
         targets: body,
         scaleY: { from: base, to: base * 1.02 },
@@ -715,6 +741,10 @@ export class OfficeScene extends Phaser.Scene {
         nearest = npc;
         nearestDistance = distance;
       }
+    }
+    if (nearest !== this.nearbyNpc) {
+      if (this.nearbyNpc) this.npcSprites.get(this.nearbyNpc.key)?.setFrame(NPC_STAND);
+      if (nearest) this.npcSprites.get(nearest.key)?.setFrame(NPC_WAVE);
     }
     this.nearbyNpc = nearest;
 
