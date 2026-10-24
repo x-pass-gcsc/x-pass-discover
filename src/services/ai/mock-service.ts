@@ -27,29 +27,6 @@ function pick<T>(options: T[], seed: string): T {
   return options[hash(seed) % options.length];
 }
 
-const BUYER_PROBES = [
-  'What are you basing that on? I need something stronger than a product claim before I give up a facing.',
-  'I hear the product story. What I do not hear yet is what happens to my shelf if it does not sell.',
-  'Help me understand the risk side. If this underperforms in week two, what happens?',
-  'How is that different from what I already carry? FitDrink is cheaper and BodyGo has the same protein.',
-  'That is a feature. Turn it into something that shows up in my category numbers.',
-];
-
-const NEGOTIATION_PROBES = [
-  'That is closer. But price is not the only thing I am weighing — what are you doing about the sell-through risk?',
-  'I can move on store count if you can move on something else. What are you willing to trade?',
-  'If I take on the shelf risk, I need you to take on some of the inventory risk. What can you offer there?',
-  'I am not going to decide on price alone. Show me what the first four weeks look like and how we measure it.',
-  'Give me the specific terms. Region, stores, quantity, price, and what happens if it misses.',
-];
-
-const MANAGER_REPLIES = [
-  'Good question — but that is the one you need to answer, not me. What does the account data already tell you?',
-  'Before you decide that, ask yourself what QuickMart is actually trying to fix. The deal design follows from that.',
-  'Check the guardrails before you commit to anything on price. If you go under the floor, we are not in business.',
-  'Remember: a closed deal that loses money is worse than a lost pitch. What does the contribution look like in your structure?',
-];
-
 function renderDisclosure(facts: PersonaFact[]): string {
   return facts.map((fact) => fact.content).join(' ');
 }
@@ -62,19 +39,24 @@ export class MockScenarioAIService implements ScenarioAIService {
     const disclosed = selectDisclosures(matches);
     const seed = `${persona.key}:${input.history.length}:${message}`;
 
-    if (persona.key === 'bite-sales-manager') {
+    const { mock } = persona;
+
+    if (mock.style === 'coach') {
       const publicFact = persona.facts.find(
         (f) =>
           f.visibility === 'public' &&
           f.triggerTopics.some((t) => message.toLowerCase().includes(t)),
       );
       const body = publicFact
-        ? `${publicFact.content} ${pick(MANAGER_REPLIES, seed)}`
-        : pick(MANAGER_REPLIES, seed);
+        ? `${publicFact.content} ${pick(mock.replies, seed)}`
+        : pick(mock.replies, seed);
       return { content: body, revealedFactIds: [], source: 'mock' };
     }
 
-    const probes = mode === 'negotiation' ? NEGOTIATION_PROBES : BUYER_PROBES;
+    const probes =
+      mode === 'negotiation' && mock.negotiationReplies?.length
+        ? mock.negotiationReplies
+        : mock.replies;
 
     // A follow-up should visibly react to what was just said.
     const lastStudentTurn = [...input.history]
@@ -85,9 +67,8 @@ export class MockScenarioAIService implements ScenarioAIService {
         ? 'Coming back to what you said a moment ago — '
         : '';
 
-    const guardrailNote = input.internalNotes?.length
-      ? ' I am happy to keep talking, but I am not treating anything as agreed until the terms are concrete.'
-      : '';
+    const guardrailNote =
+      input.internalNotes?.length && mock.steeringReply ? ` ${mock.steeringReply}` : '';
 
     if (disclosed.length > 0) {
       const content = `${renderDisclosure(disclosed)} ${pick(

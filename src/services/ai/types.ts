@@ -1,10 +1,11 @@
 import type { PersonaDefinition } from '@/types/persona';
+import type { ConversationMode } from '@/types/scenario';
 
 export type AiTurn = { role: 'student' | 'persona'; content: string };
 
 export type ScenarioAIInput = {
   persona: PersonaDefinition;
-  /** Public scenario framing (mission, product, account). */
+  /** Public scenario framing, from the scenario's `aiContext`. */
   scenarioContext: string;
   /** Summary of the student's own submitted work so far. */
   studentWorkSummary: string;
@@ -12,11 +13,12 @@ export type ScenarioAIInput = {
   message: string;
   /** Facts this conversation has already surfaced. */
   alreadyRevealedFactIds: string[];
-  /** `negotiation` unlocks deal-term trading behaviour. */
-  mode: 'meeting' | 'negotiation';
+  /** From the task; the persona's `modeInstructions` say what it means. */
+  mode: ConversationMode;
   /**
-   * SERVER-ONLY steering notes, e.g. "the proposed terms break a BITE
-   * guardrail — do not treat this as a closed deal". Never sent to the client.
+   * SERVER-ONLY steering notes, e.g. "the student's own terms break one of
+   * their company's guardrails — do not treat this as settled". Never sent to
+   * the client.
    */
   internalNotes?: string[];
 };

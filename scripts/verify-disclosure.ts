@@ -90,5 +90,91 @@ const coverage = new Set(SHOULD_REVEAL.map(([id]) => id));
 check('every hidden fact is covered by this test', allHidden.every((id) => coverage.has(id)),
   allHidden.filter((id) => !coverage.has(id)).join(', '));
 
+// ------------------------------------------------------------------ HR
+//
+// Six personas instead of one. The candidates are the hard case: a résumé
+// claim ("managed distributor relationships") is only turned into evidence by
+// asking what the candidate personally did, so that is what earns the fact.
+
+const HR_SHOULD_REVEAL: Record<string, Array<[string, string]>> = {
+  'hiring-manager': [
+    ['hm_year_one_goal', 'What does success look like for this person after the first year?'],
+    ['hm_year_one_goal', 'What should they achieve in their first 12 months?'],
+    ['hm_team_of_one', 'Who will they work with in China — is there a local team?'],
+    ['hm_team_of_one', 'Will they manage people, or be on their own?'],
+    ['hm_previous_attempt', 'What went wrong with the 2024 attempt?'],
+    ['hm_previous_attempt', 'Has BITE tried this before? What did you learn?'],
+    ['hm_language', 'Does the person really need native-level Japanese?'],
+    ['hm_language', 'Which languages will they actually use day to day?'],
+    ['hm_channel_priority', 'If you had to choose, is the distributor or e-commerce the priority?'],
+    ['hm_channel_priority', 'What is a must-have and what is a nice-to-have?'],
+    ['hm_year_one_goal', '1年目の目標は何ですか？'],
+  ],
+  'candidate-lin': [
+    ['lin_distributor_record', 'What did you personally do to build that distributor network?'],
+    ['lin_distributor_record', 'How many distributors have you signed yourself?'],
+    ['lin_lost_distributor', 'Tell me about a time something went wrong. What did you learn?'],
+    ['lin_job_changes', 'Why have you changed jobs four times?'],
+    ['lin_notice_period', 'When could you start, and what is your notice period?'],
+    ['lin_hq_reporting', 'Have you ever reported to a headquarters outside China?'],
+    ['lin_salary_expectation', 'What are your salary expectations?'],
+  ],
+  'candidate-sato': [
+    ['sato_role_scope', 'What did you personally do in those distributor deals — who signed them?'],
+    ['sato_role_scope', 'Give me a specific example of a deal you closed.'],
+    ['sato_hq_bridge', 'How have you worked with your Tokyo head office?'],
+    ['sato_mandarin_depth', 'Do you negotiate contracts in Mandarin yourself, or with an interpreter?'],
+    ['sato_availability', 'When could you start?'],
+    ['sato_salary_expectation', 'What salary are you looking for?'],
+  ],
+  'candidate-zhang': [
+    ['zhang_crossborder_record', 'What were the results of the e-commerce launch you led?'],
+    ['zhang_offline_gap', 'Have you managed an offline distributor?'],
+    ['zhang_career_break', 'What did you do during your career break?'],
+    ['zhang_hq_reporting', 'How did you report to the Japanese head office?'],
+    ['zhang_availability', 'What is your notice period?'],
+    ['zhang_salary_expectation', 'What are your compensation expectations?'],
+  ],
+  'bite-coo': [
+    ['coo_board_pressure', 'Why is the timing so important — what is the board expecting?'],
+    ['coo_referral_context', 'How well do you know Sato? Have you seen his work?'],
+    ['coo_what_convinces', 'What would convince you to sign off on a different candidate?'],
+    ['coo_notice_buyout', 'Could we buy out a notice period to make the start date?'],
+  ],
+};
+
+const HR_SHOULD_REVEAL_NOTHING: Record<string, string[]> = {
+  'hiring-manager': ['Thanks for making time today.', 'What are you looking for?'],
+  'candidate-lin': ['Tell me about yourself.', 'Thank you for coming in.'],
+  'candidate-sato': ['Tell me about yourself.', 'Why do you want to join BITE?'],
+  'candidate-zhang': ['Tell me about yourself.', 'Thank you for coming in.'],
+  'bite-coo': ['Thank you for your time.', 'I have prepared my recommendation.'],
+};
+
+console.log('\n=== HR: good questions earn the specific fact ===');
+for (const [personaKey, cases] of Object.entries(HR_SHOULD_REVEAL)) {
+  const persona = getPersona('hr-cn-expansion', personaKey);
+  if (!persona) {
+    check(`${personaKey} is registered`, false);
+    continue;
+  }
+  const revealFor = (message: string) =>
+    selectDisclosures(matchFacts(message, persona.facts, [])).map((f) => f.id);
+
+  for (const [expected, message] of cases) {
+    const ids = revealFor(message);
+    check(`${personaKey}: "${message.slice(0, 56)}${message.length > 56 ? '…' : ''}" → ${expected}`, ids.includes(expected), ids.join(', ') || 'nothing');
+  }
+  for (const message of HR_SHOULD_REVEAL_NOTHING[personaKey] ?? []) {
+    const ids = revealFor(message);
+    check(`${personaKey}: "${message}" reveals nothing`, ids.length === 0, ids.join(', '));
+  }
+
+  const hidden = persona.facts.filter((f) => f.visibility === 'hidden').map((f) => f.id);
+  const covered = new Set(cases.map(([id]) => id));
+  check(`${personaKey}: every hidden fact is covered by this test`, hidden.every((id) => covered.has(id)),
+    hidden.filter((id) => !covered.has(id)).join(', '));
+}
+
 console.log(`\n${failures === 0 ? '✅ DISCLOSURE MATCHER VERIFIED' : `❌ ${failures} CHECK(S) FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

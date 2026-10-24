@@ -46,12 +46,10 @@ export class OpenAIScenarioAIService implements ScenarioAIService {
     const systemPrompt = [
       persona.systemPrompt,
       persona.conversationRules,
-      input.mode === 'negotiation'
-        ? `This is the FINAL NEGOTIATION. You may trade across wholesale price, quantity, store count, promotion, sampling, data sharing, return terms, reorder criteria and payment terms. You want a workable deal, but you will not accept a structure that looks unprofitable or high-risk for QuickMart just because the representative asks. You still do not know BITE's internal cost floor.`
-        : 'This is the first discovery meeting. You are evaluating, not committing.',
-      `PUBLIC SCENARIO CONTEXT (the representative also has this):\n${input.scenarioContext}`,
+      persona.modeInstructions?.[input.mode] ?? '',
+      `PUBLIC SCENARIO CONTEXT (the person you are talking to also has this):\n${input.scenarioContext}`,
       input.studentWorkSummary
-        ? `WHAT THE REPRESENTATIVE HAS PREPARED (their own submitted work):\n${input.studentWorkSummary}`
+        ? `WHAT THE PERSON YOU ARE TALKING TO HAS PREPARED (their own submitted work):\n${input.studentWorkSummary}`
         : '',
       `UNDISCLOSED FACTS YOU KNOW:\n${factBlock}`,
       `Facts already disclosed in this conversation: ${

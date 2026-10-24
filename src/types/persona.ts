@@ -7,6 +7,8 @@
  * persona definition into a client component — use `PublicPersona` instead.
  */
 
+import type { ConversationMode } from './scenario';
+
 export type PersonaFactVisibility = 'public' | 'hidden';
 
 export type PersonaFact = {
@@ -49,4 +51,23 @@ export type PersonaDefinition = {
   contextPolicy: { includeStudentWork: boolean };
   /** Office NPC placement so Phaser can position them. */
   officeZoneKey: string;
+  /**
+   * SERVER-ONLY. What each conversation mode means for this persona — for a
+   * buyer, `negotiation` is trading deal terms; for an executive, defending a
+   * recommendation. Appended to the system prompt in the matching mode.
+   */
+  modeInstructions?: Partial<Record<ConversationMode, string>>;
+  /**
+   * SERVER-ONLY. How the deterministic mock adapter speaks for this persona.
+   * `coach` personas hand the question back and may share public facts;
+   * `counterpart` personas disclose hidden facts when a question earns them.
+   */
+  mock: {
+    style: 'coach' | 'counterpart';
+    replies: string[];
+    /** Used instead of `replies` in `negotiation` mode, when present. */
+    negotiationReplies?: string[];
+    /** Appended when server-side steering says nothing is agreed yet. */
+    steeringReply?: string;
+  };
 };

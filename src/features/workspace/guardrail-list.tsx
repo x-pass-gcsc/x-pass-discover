@@ -16,6 +16,15 @@ export function GuardrailList({ warnings }: { warnings: GuardrailWarning[] }) {
     return isMessageKey(key) ? t(key, warning.vars) : warning[part];
   };
 
+  // A check can name its own badge (`guardrail.<key>.category`); otherwise the
+  // severity decides it.
+  const badge = (warning: GuardrailWarning) => {
+    const key = `guardrail.${warning.key}.category`;
+    if (isMessageKey(key)) return t(key);
+    if (warning.category) return warning.category;
+    return warning.severity === 'violation' ? t('guardrail.violation') : t('guardrail.advisory');
+  };
+
   return (
     <div className="space-y-2">
       {warnings.map((warning) => {
@@ -34,7 +43,7 @@ export function GuardrailList({ warnings }: { warnings: GuardrailWarning[] }) {
           >
             <div className="flex items-center gap-2">
               <Badge tone={isViolation ? 'danger' : 'warn'}>
-                {isViolation ? t('guardrail.violation') : t('guardrail.advisory')}
+                {badge(warning)}
               </Badge>
               <span className="text-xs font-semibold text-strong">{text(warning, 'title')}</span>
             </div>
