@@ -11,11 +11,7 @@ import { signUpAsNewStudent } from './helpers/app';
  * frame in a software rasteriser, so this stays a smoke test on purpose.
  */
 
-/**
- * Phaser moves on held keys, so a tap would barely shift the player. Keys are
- * screen-relative in the isometric view: a single arrow walks a grid diagonal,
- * and a pair walks along one grid axis — up + right is due north.
- */
+/** Phaser moves on held keys, so a tap would barely shift the player. */
 async function walk(
   page: Parameters<typeof signUpAsNewStudent>[0],
   keys: string[],
@@ -47,7 +43,7 @@ test('the office boots and its prompt follows the player', async ({ page }) => {
 
   await canvas.click();
 
-  // Reception is one tile north of the spawn point.
+  // The receptionist is two tiles north of the spawn point.
   await walk(page, ['ArrowUp', 'ArrowRight'], 400);
   await expect(prompt, 'walking up to reception should offer an interaction').toBeVisible({
     timeout: 20_000,
@@ -55,7 +51,8 @@ test('the office boots and its prompt follows the player', async ({ page }) => {
   await expect(prompt).toContainText('Talk');
 
   // And walking away takes it back — the prompt tracks proximity, it does not
-  // latch on the first time something is near.
-  await walk(page, ['ArrowDown', 'ArrowLeft'], 900);
+  // latch on the first time something is near. Due east stays inside the
+  // lobby; south is the notification area, which raises its own prompt.
+  await walk(page, ['ArrowRight'], 1500);
   await expect(prompt).toHaveCount(0);
 });
