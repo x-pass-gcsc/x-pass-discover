@@ -10,6 +10,9 @@ import { SURVEY_H, SURVEY_W, paintSurveyRoom } from './survey-art';
 
 type Answers = Record<string, unknown>;
 
+/** How long a picked score stays on screen before the next question replaces it. */
+const ADVANCE_DELAY_MS = 220;
+
 const isAnswered = (question: PreSurveyQuestion, value: unknown) => {
   if (question.kind === 'scale') return typeof value === 'number';
   if (question.optional) return true;
@@ -45,6 +48,7 @@ export function SurveyScreen({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signedOut, setSignedOut] = useState(false);
+  const advanceTimer = useRef<number | null>(null);
 
   const total = PRE_SURVEY_QUESTIONS.length;
   const question = PRE_SURVEY_QUESTIONS[index];
@@ -58,14 +62,14 @@ export function SurveyScreen({
   const setValue = (key: string, next: unknown) =>
     setAnswers((prev) => ({ ...prev, [key]: next }));
 
-  const submit = useCallback(async () => {
+  const submit = useCallback(async (toSave: Answers) => {
     setPending(true);
     setError(null);
     try {
       const response = await fetch('/api/pre-survey', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers: toSave }),
       });
       const data = await response.json();
       // The sign-in cookie no longer resolves to an account (it expired, or the
@@ -82,31 +86,58 @@ export function SurveyScreen({
       setError(cause instanceof Error ? cause.message : t('survey.saveFailed'));
       setPending(false);
     }
-  }, [answers, router, t]);
+  }, [router, t]);
+
+  const cancelAdvance = () => {
+    if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
+    advanceTimer.current = null;
+  };
+  useEffect(() => cancelAdvance, []);
 
   const next = useCallback(() => {
     if (!canContinue || pending) return;
-    if (last) void submit();
+    if (last) void submit(answers);
     else setIndex((i) => Math.min(total - 1, i + 1));
-  }, [canContinue, last, pending, submit, total]);
+  }, [answers, canContinue, last, pending, submit, total]);
 
-  const back = () => setIndex((i) => Math.max(0, i - 1));
+  // Picking a score is the answer and the step forward: after a beat, so the
+  // choice is seen, the next question replaces it — or, on the last one, the
+  // survey is saved.
+  const choose = useCallback(
+    (score: number) => {
+      if (pending) return;
+      const updated = { ...answers, [question.key]: score };
+      setAnswers(updated);
+      cancelAdvance();
+      advanceTimer.current = window.setTimeout(() => {
+        advanceTimer.current = null;
+        if (last) void submit(updated);
+        else setIndex((i) => Math.min(total - 1, i + 1));
+      }, ADVANCE_DELAY_MS);
+    },
+    [answers, last, pending, question.key, submit, total],
+  );
 
-  // Keys 1–5 answer a scale question; Enter moves on. Typing in a text answer
-  // is left alone.
+  const back = () => {
+    cancelAdvance();
+    setIndex((i) => Math.max(0, i - 1));
+  };
+
+  // Keys 1–5 answer a scale question (and move on); Enter moves on from a text
+  // answer. Typing in a text answer is left alone.
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       if (target?.tagName === 'TEXTAREA' || event.metaKey || event.ctrlKey || event.altKey) return;
       if (question.kind === 'scale' && /^[1-5]$/.test(event.key)) {
-        setValue(question.key, Number(event.key));
+        choose(Number(event.key));
         return;
       }
-      if (event.key === 'Enter' && target?.tagName !== 'BUTTON' && target?.tagName !== 'A') next();
+      if (question.kind !== 'scale' && event.key === 'Enter' && target?.tagName !== 'BUTTON' && target?.tagName !== 'A') next();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [question, next]);
+  }, [question, next, choose]);
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#1d2433]" data-testid="survey-screen">
@@ -188,7 +219,7 @@ export function SurveyScreen({
                         <button
                           key={score}
                           type="button"
-                          onClick={() => setValue(question.key, score)}
+                          onClick={() => choose(score)}
                           aria-pressed={selected}
                           className={`h-12 rounded-lg border text-base font-semibold transition-all duration-150 active:scale-[0.97] sm:h-14 ${
                             selected
@@ -251,16 +282,26 @@ export function SurveyScreen({
                 >
                   {t('common.back')}
                 </button>
-                <button
-                  type="button"
-                  onClick={next}
-                  disabled={!canContinue || pending}
-                  className="inline-flex h-11 min-w-[130px] items-center justify-center gap-2 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white shadow-md shadow-brand-600/25 transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  data-testid="survey-next"
-                >
-                  {pending ? t('survey.saving') : last ? t('survey.submit') : t('common.next')}
-                  {!pending ? <span aria-hidden>›</span> : null}
-                </button>
+                {/* A scale question moves on when a score is picked; only a
+                    written answer needs a button to go forward. */}
+                {question.kind === 'scale' ? (
+                  pending ? (
+                    <span className="inline-flex h-11 items-center px-2 text-sm font-semibold text-body" role="status">
+                      {t('survey.saving')}
+                    </span>
+                  ) : null
+                ) : (
+                  <button
+                    type="button"
+                    onClick={next}
+                    disabled={!canContinue || pending}
+                    className="inline-flex h-11 min-w-[130px] items-center justify-center gap-2 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white shadow-md shadow-brand-600/25 transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    data-testid="survey-next"
+                  >
+                    {pending ? t('survey.saving') : last ? t('survey.submit') : t('common.next')}
+                    {!pending ? <span aria-hidden>›</span> : null}
+                  </button>
+                )}
               </div>
             </footer>
           </section>
