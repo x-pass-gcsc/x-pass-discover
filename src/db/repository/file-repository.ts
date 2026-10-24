@@ -16,6 +16,7 @@ import type {
   TaskAnswer,
   TaskAnswerRevision,
   User,
+  UserCredential,
 } from '@/types/runtime';
 import type {
   CreateSessionInput,
@@ -27,6 +28,7 @@ import type {
 
 type FileShape = {
   users: User[];
+  credentials: UserCredential[];
   preSurveys: PreSurvey[];
   departmentSelections: DepartmentSelection[];
   sessions: ProjectSession[];
@@ -41,6 +43,7 @@ type FileShape = {
 
 const EMPTY: FileShape = {
   users: [],
+  credentials: [],
   preSurveys: [],
   departmentSelections: [],
   sessions: [],
@@ -166,6 +169,28 @@ export class FileRepository implements XPassRepository {
       };
       d.users.push(user);
       return user;
+    });
+  }
+
+  async updateDisplayName(userId: string, displayName: string) {
+    return this.mutate((d) => {
+      const user = d.users.find((u) => u.id === userId);
+      if (!user) return null;
+      user.displayName = displayName;
+      return user;
+    });
+  }
+
+  async getCredential(userId: string) {
+    return this.read((d) => d.credentials.find((c) => c.userId === userId) ?? null);
+  }
+
+  async setPasswordHash(userId: string, passwordHash: string, updatedAt: string) {
+    await this.mutate((d) => {
+      const record: UserCredential = { userId, passwordHash, updatedAt };
+      const idx = d.credentials.findIndex((c) => c.userId === userId);
+      if (idx >= 0) d.credentials[idx] = record;
+      else d.credentials.push(record);
     });
   }
 

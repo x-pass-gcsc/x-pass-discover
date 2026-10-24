@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn, signUp, signUpAsNewStudent, uniqueEmail } from './helpers/app';
+import { TEST_PASSWORD, signIn, signUp, signUpAsNewStudent, uniqueEmail } from './helpers/app';
 
 /**
  * Sign-up and sign-in are two screens that do two different things, and the
@@ -36,6 +36,8 @@ test('signing up with an email that already has an account is refused', async ({
   await page.goto('/signup');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Display name').fill('Someone Else');
+  await page.getByTestId('password').fill('a-different-password');
+  await page.getByTestId('password-confirm').fill('a-different-password');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   const error = page.getByTestId('auth-error');
@@ -46,6 +48,7 @@ test('signing up with an email that already has an account is refused', async ({
   // The way forward is offered rather than left for the student to work out.
   await error.getByRole('link', { name: /Sign in with this email/ }).click();
   await page.waitForURL('**/login**');
+  await page.getByTestId('password').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Enter BITE' }).click();
   // Still before the pre-survey, so sign-in opens in the lobby.
   await page.waitForURL('**/start');

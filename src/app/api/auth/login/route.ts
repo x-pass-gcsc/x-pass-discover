@@ -1,21 +1,26 @@
 import { z, ZodError } from 'zod';
 import { NextResponse } from 'next/server';
-import { AccountNotFoundError, signIn } from '@/lib/auth/session';
+import { AccountNotFoundError, InvalidCredentialsError, signIn } from '@/lib/auth/session';
 import { faultResponse, jsonError, parseBody } from '@/lib/api';
 
 /** Signs into an existing account. Creating one is `/api/auth/signup`. */
 const schema = z.object({
   email: z.string().email('a valid email is required'),
+  // Optional only for accounts created before passwords existed.
+  password: z.string().max(1024).optional(),
 });
 
 export async function POST(request: Request) {
   try {
     const body = await parseBody(request, schema);
-    const user = await signIn(body.email);
-    return NextResponse.json({ user });
+    const { user, needsPassword } = await signIn(body.email, body.password || undefined);
+    return NextResponse.json({ user, needsPassword });
   } catch (error) {
     if (error instanceof AccountNotFoundError) {
       return jsonError(error.message, 404, 'account_not_found');
+    }
+    if (error instanceof InvalidCredentialsError) {
+      return jsonError(error.message, 401, 'invalid_credentials');
     }
     if (error instanceof ZodError) {
       return jsonError(error.issues[0]?.message ?? 'Invalid request', 400);

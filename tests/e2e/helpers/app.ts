@@ -27,6 +27,9 @@ export function uniqueEmail(prefix = 'student'): string {
   return `${prefix}-${process.pid}-${Date.now().toString(36)}-${counter}@x-pass.test`;
 }
 
+/** Every account the suite creates uses this password; none of them is real. */
+export const TEST_PASSWORD = 'correct-horse-battery';
+
 export async function signUp(
   page: Page,
   { email, displayName }: { email: string; displayName: string },
@@ -34,14 +37,21 @@ export async function signUp(
   await page.goto('/signup');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Display name').fill(displayName);
+  await page.getByTestId('password').fill(TEST_PASSWORD);
+  await page.getByTestId('password-confirm').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Create account' }).click();
   // A brand-new account has not taken the pre-survey, so it opens in the lobby.
   await page.waitForURL('**/start');
 }
 
-export async function signIn(page: Page, email: string): Promise<void> {
+export async function signIn(
+  page: Page,
+  email: string,
+  password = TEST_PASSWORD,
+): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
+  await page.getByTestId('password').fill(password);
   await page.getByRole('button', { name: 'Enter BITE' }).click();
   await page.waitForURL(SIGNED_IN_URL);
 }
@@ -67,6 +77,8 @@ export async function ensureSignedIn(
   await page.goto('/signup');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Display name').fill(displayName);
+  await page.getByTestId('password').fill(TEST_PASSWORD);
+  await page.getByTestId('password-confirm').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Create account' }).click();
 
   await Promise.race([

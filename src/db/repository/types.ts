@@ -14,6 +14,7 @@ import type {
   TaskAnswer,
   TaskAnswerRevision,
   User,
+  UserCredential,
 } from '@/types/runtime';
 
 export type CreateSessionInput = {
@@ -71,6 +72,11 @@ export interface XPassRepository {
    * cannot both decide the address is free.
    */
   createUser(input: { email: string; displayName: string }): Promise<User | null>;
+  updateDisplayName(userId: string, displayName: string): Promise<User | null>;
+  /** The stored password, or `null` for an account that has never set one. */
+  getCredential(userId: string): Promise<UserCredential | null>;
+  /** Sets or replaces the password. `updatedAt` comes from the caller's clock. */
+  setPasswordHash(userId: string, passwordHash: string, updatedAt: string): Promise<void>;
 
   // --- onboarding ---------------------------------------------------------
   savePreSurvey(userId: string, answers: Record<string, unknown>): Promise<PreSurvey>;

@@ -14,6 +14,13 @@ export type User = {
   createdAt: string;
 };
 
+/** Server-only: never send this to the browser. */
+export type UserCredential = {
+  userId: string;
+  passwordHash: string;
+  updatedAt: string;
+};
+
 export type ProjectSession = {
   id: string;
   userId: string;
