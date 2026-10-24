@@ -277,8 +277,30 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
 
           {view && currentStep ? <TodaysTasks step={currentStep} /> : null}
 
-          <div className="pointer-events-none absolute bottom-4 right-4 w-[190px] rounded-xl bg-[#1d2433]/85 p-2 shadow-float">
-            <Minimap player={playerTile} activeRoomKey={zoneKey} />
+          <div className="absolute bottom-4 right-4 flex w-[190px] flex-col items-end gap-2">
+            <div className="flex overflow-hidden rounded-lg bg-[#1d2433]/90 text-white shadow-float">
+              <button
+                type="button"
+                onClick={() => bridge.command({ type: 'zoom', step: -1 })}
+                className="grid size-8 place-items-center text-lg leading-none hover:bg-white/10"
+                aria-label={t('office.zoomOut')}
+                title={t('office.zoomOut')}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={() => bridge.command({ type: 'zoom', step: 1 })}
+                className="grid size-8 place-items-center border-l border-white/10 text-lg leading-none hover:bg-white/10"
+                aria-label={t('office.zoomIn')}
+                title={t('office.zoomIn')}
+              >
+                +
+              </button>
+            </div>
+            <div className="pointer-events-none w-full rounded-xl bg-[#1d2433]/85 p-2 shadow-float">
+              <Minimap player={playerTile} activeRoomKey={zoneKey} />
+            </div>
           </div>
 
           {prompt ? (

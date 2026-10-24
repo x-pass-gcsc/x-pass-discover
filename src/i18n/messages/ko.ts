@@ -159,6 +159,8 @@ export const ko: Messages = {
   'office.todaysTasks': '오늘의 할 일',
   'office.done': '(완료)',
   'office.minimap': '오피스 미니맵',
+  'office.zoomIn': '확대',
+  'office.zoomOut': '축소',
   'office.you': '나',
   'office.talk': '대화하기',
 

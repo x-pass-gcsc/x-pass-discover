@@ -167,6 +167,8 @@ export const en = {
   'office.todaysTasks': "Today's Tasks",
   'office.done': '(done)',
   'office.minimap': 'Office minimap',
+  'office.zoomIn': 'Zoom in',
+  'office.zoomOut': 'Zoom out',
   'office.you': 'You',
   'office.talk': 'Talk',
 
