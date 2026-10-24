@@ -1,16 +1,22 @@
 /**
  * BITE office layout — pure data.
  *
- * The experience layer is generated from this definition: Phaser reads it to
- * build walls, zones and NPC positions, and React reads the same keys to decide
- * which overlay an interaction opens. No business state lives here.
+ * The office is one painted picture (`public/img/office/floor.webp`). This file
+ * is the invisible floor plan laid over it: which tiles of the picture are
+ * floor, where each room is, where the big furniture stands, and where people
+ * are. Phaser reads it for collision, zones and NPC positions, and React reads
+ * the same keys to decide which overlay an interaction opens. No business
+ * state lives here.
+ *
+ * Coordinates are tiles of 32px on the picture, which is shown at exactly
+ * WORLD_WIDTH × WORLD_HEIGHT. If the picture is regenerated with a different
+ * layout, this file is what has to be re-traced; `npm run verify:office`
+ * checks the result is still one walkable floor.
  */
 
-import type { FloorMaterial } from './theme';
-
 export const TILE = 32;
-export const GRID_WIDTH = 46;
-export const GRID_HEIGHT = 30;
+export const GRID_WIDTH = 45;
+export const GRID_HEIGHT = 34;
 export const WORLD_WIDTH = GRID_WIDTH * TILE;
 export const WORLD_HEIGHT = GRID_HEIGHT * TILE;
 
@@ -21,23 +27,28 @@ export type ZoneAction =
   | { kind: 'meeting'; label: string }
   | { kind: 'notifications'; label: string };
 
+/** A rectangle in picture pixels. */
+export type PixelRect = { x: number; y: number; w: number; h: number };
+
 export type OfficeRoom = {
   key: string;
   name: string;
-  /** Tile-space rectangle, inclusive of x/y, exclusive of x+w / y+h. */
+  /** Tile-space rectangle of walkable floor, inclusive of x/y, exclusive of x+w / y+h. */
   x: number;
   y: number;
   w: number;
   h: number;
-  /** Minimap fill. */
+  /** Minimap accent. */
   color: number;
-  /** What the 2.5D office lays on this room's floor. */
-  floor: FloorMaterial;
-  /** Glass partitions instead of solid ones, so the room stays visible. */
-  glass?: boolean;
   action: ZoneAction;
   /** Tiles carved out of the surrounding wall so the room is reachable. */
   doors: Array<{ x: number; y: number }>;
+  /**
+   * The name plate painted in the picture, in picture pixels. The picture's
+   * plates carry only an icon and a blank bar; the room's name is written over
+   * the bar in the student's language. Rooms without one get a drawn plate.
+   */
+  sign?: PixelRect;
 };
 
 export type OfficeCorridor = { x: number; y: number; w: number; h: number };
@@ -45,32 +56,12 @@ export type OfficeCorridor = { x: number; y: number; w: number; h: number };
 /**
  * Furniture.
  *
- * Props are placed in tile space and rendered procedurally — the office needs
- * no art assets. `solid: true` adds a collision body, which is why
+ * The furniture is painted into the picture; a prop is only its footprint.
+ * `solid: true` adds a collision body over that footprint, which is why
  * `npm run verify:office` re-checks that every room and NPC is still reachable
- * after furniture moves.
+ * after a prop moves.
  */
-export type OfficePropKind =
-  | 'desk'
-  | 'table'
-  | 'counter'
-  | 'shelf'
-  | 'server'
-  | 'sofa'
-  | 'chair'
-  | 'plant'
-  | 'rug'
-  | 'board'
-  | 'screen'
-  | 'bookcase'
-  | 'cabinet'
-  | 'coffee'
-  | 'water'
-  | 'coatrack'
-  | 'boxes'
-  | 'lamp'
-  | 'printer'
-  | 'coffeetable';
+export type OfficePropKind = 'table' | 'desk' | 'counter' | 'sofa' | 'gate';
 
 export type OfficeProp = {
   kind: OfficePropKind;
@@ -79,29 +70,19 @@ export type OfficeProp = {
   w?: number;
   h?: number;
   solid?: boolean;
-  /** Desks with a monitor read as "someone works here". */
-  monitor?: boolean;
-  /** Overrides the kind's default colour; used to highlight the player's desk. */
-  accent?: number;
-  /**
-   * Chairs only: shirt colour of a colleague sitting in it. Pure set dressing —
-   * occupants cannot be talked to; talkable people are `NPCS`.
-   */
-  occupant?: number;
-  /** Boards and screens: what is written on them, a title then its points. */
-  lines?: string[];
 };
 
 /**
- * Things hung on the building's back walls (row 0 or column 0). A decoration
- * spans `w` wall tiles starting at (x, y) and replaces those tiles' windows.
+ * Set dressing: a colleague sitting at one of the painted desks. Pure
+ * decoration — they cannot be talked to; talkable people are `NPCS`. Tile
+ * coordinates may be fractional so they sit on the painted chairs.
  */
-export type WallDecor = {
+export type OfficeColleague = {
   x: number;
   y: number;
-  w: number;
-  kind: 'motto' | 'frame' | 'clock' | 'notice';
-  text?: string[];
+  /** 'back' sits facing into the room, away from the viewer. */
+  view: 'back' | 'front';
+  shirt: number;
 };
 
 export type OfficeNpc = {
@@ -120,282 +101,164 @@ export type OfficeNpc = {
   prompt: string;
 };
 
-export const CORRIDORS: OfficeCorridor[] = [
-  { x: 1, y: 9, w: 44, h: 2 },
-  { x: 1, y: 20, w: 44, h: 2 },
-  { x: 10, y: 9, w: 2, h: 13 },
-  { x: 32, y: 9, w: 2, h: 13 },
-];
+/** Every room opens straight onto the lobby or the entrance hall. */
+export const CORRIDORS: OfficeCorridor[] = [];
 
+/*
+ * The picture, room by room (tile columns × rows):
+ *
+ *   my-desk (6–14 × 4–7)   meeting-room-a (17–28)    product-zone (30–39)
+ *   marketing (3–12 × 11–14)  executive-room (14–31 × 9–15)  sales (33–41 × 11–14)
+ *   hr (1–12 × 17–21)         reception (14–31 × 16–21)      strategy (33–43 × 17–21)
+ *   meeting-room-b (4–14 × 25–29)  notification-area (16–28 × 22–33)  data-room (30–40 × 26–30)
+ *
+ * The lobby is one open hall: its back half, the lounge under the world map,
+ * is the executive room; its front half, with the XPASS desk, is reception.
+ */
 export const ROOMS: OfficeRoom[] = [
   {
     key: 'reception',
     name: 'Reception',
-    x: 1, y: 1, w: 10, h: 7,
+    x: 14, y: 16, w: 18, h: 6,
     color: 0xe4e9fb,
-    floor: 'stone',
     action: { kind: 'info' },
-    doors: [{ x: 5, y: 8 }, { x: 6, y: 8 }],
+    doors: [],
   },
   {
     key: 'marketing-zone',
     name: 'Marketing Zone',
-    x: 13, y: 1, w: 9, h: 7,
+    x: 3, y: 11, w: 10, h: 4,
     color: 0xfbe3f0,
-    floor: 'carpet',
     action: { kind: 'info' },
-    doors: [{ x: 17, y: 8 }, { x: 18, y: 8 }],
+    doors: [{ x: 13, y: 13 }, { x: 13, y: 14 }],
+    sign: { x: 168, y: 270, w: 141, h: 46 },
   },
   {
     key: 'sales-zone',
     name: 'Sales Zone',
-    x: 24, y: 1, w: 9, h: 7,
+    x: 33, y: 11, w: 9, h: 4,
     color: 0xdde9fd,
-    floor: 'carpet',
     action: { kind: 'info' },
-    doors: [{ x: 28, y: 8 }, { x: 29, y: 8 }],
+    doors: [{ x: 32, y: 13 }, { x: 32, y: 14 }],
+    sign: { x: 1124, y: 272, w: 143, h: 44 },
   },
   {
     key: 'product-zone',
     name: 'Product Zone',
-    x: 35, y: 1, w: 10, h: 7,
+    x: 30, y: 4, w: 10, h: 4,
     color: 0xdef3e4,
-    floor: 'tile',
     action: { kind: 'info' },
-    doors: [{ x: 39, y: 8 }, { x: 40, y: 8 }],
+    doors: [{ x: 31, y: 8 }],
+    sign: { x: 1050, y: 52, w: 155, h: 45 },
   },
   {
     key: 'strategy-zone',
     name: 'Strategy Zone',
-    x: 1, y: 12, w: 9, h: 7,
+    x: 33, y: 17, w: 11, h: 5,
     color: 0xe9e4fb,
-    floor: 'wood',
-    glass: true,
     action: { kind: 'info' },
-    doors: [{ x: 5, y: 11 }, { x: 6, y: 11 }, { x: 5, y: 19 }, { x: 6, y: 19 }],
+    doors: [{ x: 32, y: 20 }, { x: 32, y: 21 }],
+    sign: { x: 1160, y: 497, w: 149, h: 46 },
   },
   {
     key: 'hr-zone',
     name: 'HR Zone',
-    x: 12, y: 12, w: 9, h: 7,
+    x: 1, y: 17, w: 12, h: 5,
     color: 0xfceadb,
-    floor: 'carpet',
     action: { kind: 'info' },
-    doors: [{ x: 16, y: 11 }, { x: 17, y: 11 }, { x: 16, y: 19 }, { x: 17, y: 19 }],
+    doors: [{ x: 13, y: 20 }, { x: 13, y: 21 }],
+    sign: { x: 124, y: 497, w: 149, h: 47 },
   },
   {
     key: 'data-room',
     name: 'Data Room',
-    x: 23, y: 12, w: 9, h: 7,
+    x: 30, y: 26, w: 11, h: 5,
     color: 0xdaeefa,
-    floor: 'tile',
     action: { kind: 'resources', label: 'Browse Files' },
-    doors: [{ x: 27, y: 11 }, { x: 28, y: 11 }, { x: 27, y: 19 }, { x: 28, y: 19 }],
+    doors: [{ x: 29, y: 29 }, { x: 29, y: 30 }],
+    sign: { x: 1096, y: 751, w: 141, h: 47 },
   },
   {
     key: 'meeting-room-a',
     name: 'Meeting Room A',
-    x: 34, y: 12, w: 5, h: 7,
+    x: 17, y: 4, w: 12, h: 4,
     color: 0xdcf2ea,
-    floor: 'wood',
-    glass: true,
     action: { kind: 'meeting', label: 'Start Meeting' },
-    doors: [{ x: 36, y: 11 }, { x: 36, y: 19 }],
+    doors: [{ x: 22, y: 8 }, { x: 23, y: 8 }],
+    sign: { x: 638, y: 50, w: 161, h: 45 },
   },
   {
     key: 'meeting-room-b',
     name: 'Meeting Room B',
-    x: 40, y: 12, w: 5, h: 7,
+    x: 4, y: 25, w: 11, h: 5,
     color: 0xdcf2ea,
-    floor: 'wood',
-    glass: true,
     action: { kind: 'info' },
-    doors: [{ x: 42, y: 11 }, { x: 42, y: 19 }],
+    doors: [{ x: 15, y: 28 }, { x: 15, y: 29 }],
+    sign: { x: 178, y: 750, w: 140, h: 48 },
   },
   {
     key: 'my-desk',
     name: 'My Desk',
-    x: 1, y: 23, w: 12, h: 6,
+    x: 6, y: 4, w: 9, h: 4,
     color: 0xdeebfb,
-    floor: 'carpet',
     action: { kind: 'workspace', label: 'Open Workspace' },
-    doors: [{ x: 6, y: 22 }, { x: 7, y: 22 }],
+    doors: [{ x: 14, y: 8 }],
+    sign: { x: 243, y: 50, w: 149, h: 46 },
   },
   {
     key: 'executive-room',
     name: 'Executive Room',
-    x: 16, y: 23, w: 12, h: 6,
+    x: 14, y: 9, w: 18, h: 7,
     color: 0xfaf0da,
-    floor: 'walnut',
-    glass: true,
     action: { kind: 'info' },
-    doors: [{ x: 21, y: 22 }, { x: 22, y: 22 }],
+    doors: [],
   },
   {
     key: 'notification-area',
     name: 'Notification Area',
-    x: 31, y: 23, w: 14, h: 6,
+    x: 16, y: 22, w: 13, h: 12,
     color: 0xfbe2e2,
-    floor: 'carpet',
     action: { kind: 'notifications', label: 'Check Messages' },
-    doors: [{ x: 37, y: 22 }, { x: 38, y: 22 }],
+    doors: [],
   },
 ];
 
 /**
- * Furniture layout, room by room.
+ * Footprints of the painted furniture that should stop the player: the big
+ * tables, the reception desk, the lobby sofas and the entrance gates. Chairs,
+ * plants and lamps are left walkable so the narrow painted rooms stay usable.
  *
- * Solid props are kept clear of door tiles, the tile just inside each door, the
- * spawn point and every NPC, so the floor plan stays walkable.
+ * Solid props are kept clear of door tiles, the spawn point and every NPC.
  */
 export const PROPS: OfficeProp[] = [
-  // Reception
-  { kind: 'rug', x: 2, y: 4, w: 7, h: 2 },
-  { kind: 'counter', x: 3, y: 2, w: 6, h: 1, solid: true },
-  { kind: 'sofa', x: 2, y: 6, w: 3, h: 1, solid: true },
-  { kind: 'plant', x: 9, y: 1, solid: true },
-  { kind: 'plant', x: 9, y: 6, solid: true },
-  { kind: 'board', x: 1, y: 1, w: 1, h: 1, lines: ['Welcome', 'to BITE'] },
-
-  { kind: 'water', x: 1, y: 3, solid: true },
-  { kind: 'coatrack', x: 1, y: 5, solid: true },
-
-  // Marketing Zone
-  { kind: 'desk', x: 14, y: 2, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 14, y: 5, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 19, y: 2, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 19, y: 5, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'chair', x: 14, y: 3, occupant: 0x2f6fb5 },
-  { kind: 'chair', x: 19, y: 3 },
-  { kind: 'chair', x: 14, y: 6 },
-  { kind: 'chair', x: 19, y: 6, occupant: 0xc1543f },
-  { kind: 'board', x: 17, y: 1, w: 2, h: 1, lines: ['Campaign Plan', 'Target analysis', 'Positioning', 'Channel strategy'] },
-
-  { kind: 'cabinet', x: 21, y: 1, solid: true },
-  { kind: 'printer', x: 21, y: 4, solid: true },
-
-  // Sales Zone
-  { kind: 'desk', x: 25, y: 2, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 25, y: 5, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 30, y: 2, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 30, y: 5, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'chair', x: 25, y: 3, occupant: 0x3f9b6e },
-  { kind: 'chair', x: 30, y: 3 },
-  { kind: 'chair', x: 25, y: 6 },
-  { kind: 'chair', x: 30, y: 6, occupant: 0x7b6bb8 },
-  { kind: 'board', x: 27, y: 1, w: 2, h: 1, lines: ['Q3 Pipeline', 'QuickMart', 'Convenience', 'Gyms'] },
-  { kind: 'plant', x: 32, y: 1, solid: true },
-
-  { kind: 'cabinet', x: 24, y: 7, solid: true },
-  { kind: 'water', x: 32, y: 7, solid: true },
-
-  // Product Zone
-  { kind: 'shelf', x: 36, y: 1, w: 3, h: 1, solid: true },
-  { kind: 'shelf', x: 41, y: 1, w: 3, h: 1, solid: true },
-  { kind: 'desk', x: 36, y: 4, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 41, y: 4, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'chair', x: 36, y: 5, occupant: 0xd9a23a },
-  { kind: 'chair', x: 41, y: 5 },
-  { kind: 'plant', x: 44, y: 7, solid: true },
-
-  { kind: 'boxes', x: 35, y: 7, solid: true },
-  { kind: 'boxes', x: 44, y: 3, solid: true },
-
-  // Strategy Zone
-  { kind: 'rug', x: 2, y: 13, w: 6, h: 5 },
-  { kind: 'table', x: 3, y: 14, w: 4, h: 3, solid: true },
-  { kind: 'chair', x: 2, y: 15 },
-  { kind: 'chair', x: 7, y: 15, occupant: 0x8c5e3c },
-  { kind: 'screen', x: 8, y: 12, w: 1, h: 2, lines: ['Market Map', 'Share by channel'] },
-  { kind: 'plant', x: 1, y: 18, solid: true },
-
-  { kind: 'bookcase', x: 1, y: 12, solid: true },
-  { kind: 'lamp', x: 9, y: 18, solid: true },
-
-  // HR Zone
-  { kind: 'desk', x: 13, y: 13, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 13, y: 16, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 19, y: 13, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 19, y: 16, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'chair', x: 13, y: 14, occupant: 0x2f8f9b },
-  { kind: 'chair', x: 19, y: 14, occupant: 0x4a5568 },
-  { kind: 'plant', x: 12, y: 18, solid: true },
-
-  { kind: 'cabinet', x: 20, y: 12, solid: true },
-
-  // Data Room
-  { kind: 'shelf', x: 24, y: 13, w: 2, h: 1, solid: true },
-  { kind: 'shelf', x: 24, y: 15, w: 2, h: 1, solid: true },
-  { kind: 'shelf', x: 24, y: 17, w: 2, h: 1, solid: true },
-  { kind: 'shelf', x: 30, y: 13, w: 2, h: 1, solid: true },
-  { kind: 'shelf', x: 30, y: 15, w: 2, h: 1, solid: true },
-  { kind: 'shelf', x: 30, y: 17, w: 2, h: 1, solid: true },
-  { kind: 'server', x: 23, y: 12, solid: true },
-  { kind: 'server', x: 23, y: 18, solid: true },
-
-  { kind: 'cabinet', x: 31, y: 12, solid: true },
-  { kind: 'boxes', x: 24, y: 18, solid: true },
-  { kind: 'boxes', x: 29, y: 18, solid: true },
-
-  // Meeting Room A
-  { kind: 'rug', x: 34, y: 13, w: 5, h: 5 },
-  { kind: 'table', x: 35, y: 16, w: 3, h: 2, solid: true },
-  { kind: 'chair', x: 34, y: 16 },
-  { kind: 'chair', x: 38, y: 16 },
-  { kind: 'screen', x: 34, y: 12, w: 1, h: 2, lines: ['BITE × QuickMart', 'Protein drink pitch'] },
-
-  { kind: 'plant', x: 38, y: 12, solid: true },
-
-  // Meeting Room B
-  { kind: 'rug', x: 40, y: 13, w: 5, h: 5 },
-  { kind: 'table', x: 41, y: 16, w: 3, h: 2, solid: true },
-  { kind: 'chair', x: 40, y: 16 },
-  { kind: 'chair', x: 44, y: 16 },
-  { kind: 'screen', x: 40, y: 12, w: 1, h: 2 },
-
-  { kind: 'plant', x: 44, y: 12, solid: true },
-
-  // My Desk
-  { kind: 'rug', x: 3, y: 24, w: 5, h: 3 },
-  { kind: 'desk', x: 4, y: 25, w: 3, h: 1, solid: true, monitor: true, accent: 0x3b82f6 },
-  { kind: 'chair', x: 5, y: 26 },
-  { kind: 'desk', x: 9, y: 24, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'desk', x: 9, y: 27, w: 2, h: 1, solid: true, monitor: true },
-  { kind: 'plant', x: 1, y: 28, solid: true },
-  { kind: 'plant', x: 12, y: 23, solid: true },
-
-  { kind: 'cabinet', x: 1, y: 23, solid: true },
-  { kind: 'lamp', x: 12, y: 28, solid: true },
-
-  // Executive Room
-  { kind: 'rug', x: 18, y: 24, w: 7, h: 3 },
-  { kind: 'desk', x: 19, y: 25, w: 5, h: 1, solid: true, accent: 0xd1a054 },
-  { kind: 'chair', x: 21, y: 24 },
-  { kind: 'sofa', x: 17, y: 27, w: 3, h: 1, solid: true },
-  { kind: 'plant', x: 27, y: 23, solid: true },
-  { kind: 'plant', x: 16, y: 28, solid: true },
-
-  { kind: 'bookcase', x: 24, y: 23, w: 2, h: 1, solid: true },
-  { kind: 'lamp', x: 16, y: 23, solid: true },
-
-  // Notification Area
-  { kind: 'board', x: 33, y: 23, w: 3, h: 1, solid: true, lines: ['Notice Board', 'Monthly all-hands Fri', 'New samples arrived', 'Sales kick-off'] },
-  { kind: 'board', x: 40, y: 23, w: 3, h: 1, solid: true, lines: ['Messages', 'Buyer follow-ups', 'Price review', 'Team lunch 12:30'] },
-  { kind: 'screen', x: 37, y: 23, w: 2, h: 1, lines: ['BITE News', 'Protein Drink launch'] },
-  { kind: 'sofa', x: 33, y: 27, w: 3, h: 1, solid: true },
-  { kind: 'plant', x: 44, y: 28, solid: true },
-  { kind: 'coffee', x: 43, y: 23, w: 2, h: 1, solid: true },
-  { kind: 'water', x: 44, y: 25, solid: true },
-  { kind: 'coffeetable', x: 34, y: 25, w: 2, h: 1, solid: true },
+  { kind: 'table', x: 7, y: 5, w: 7, h: 1, solid: true }, // my desk
+  { kind: 'table', x: 19, y: 5, w: 8, h: 1, solid: true }, // meeting room A
+  { kind: 'table', x: 33, y: 5, w: 6, h: 1, solid: true }, // product
+  { kind: 'table', x: 5, y: 12, w: 6, h: 1, solid: true }, // marketing
+  { kind: 'table', x: 35, y: 12, w: 6, h: 1, solid: true }, // sales
+  { kind: 'table', x: 3, y: 18, w: 7, h: 1, solid: true }, // hr
+  { kind: 'table', x: 36, y: 19, w: 7, h: 1, solid: true }, // strategy
+  { kind: 'table', x: 32, y: 28, w: 7, h: 1, solid: true }, // data room
+  { kind: 'sofa', x: 4, y: 26, w: 5, h: 2, solid: true }, // meeting room B lounge
+  { kind: 'table', x: 12, y: 26, w: 3, h: 2, solid: true }, // meeting room B café
+  { kind: 'sofa', x: 18, y: 13, w: 3, h: 2, solid: true }, // lobby lounge
+  { kind: 'sofa', x: 23, y: 12, w: 4, h: 1, solid: true },
+  { kind: 'table', x: 21, y: 14, w: 3, h: 1, solid: true },
+  { kind: 'counter', x: 18, y: 17, w: 10, h: 3, solid: true }, // XPASS desk
+  { kind: 'gate', x: 19, y: 27, w: 1, h: 2, solid: true },
+  { kind: 'gate', x: 26, y: 27, w: 1, h: 2, solid: true },
 ];
 
-export const WALL_DECOR: WallDecor[] = [
-  { x: 6, y: 0, w: 3, kind: 'motto', text: ['Good Experiences', 'Shape Good People.'] },
-  { x: 16, y: 0, w: 1, kind: 'clock' },
-  { x: 29, y: 0, w: 2, kind: 'frame' },
-  { x: 37, y: 0, w: 2, kind: 'notice', text: ['GOOD', 'IDEAS', 'GOOD', 'PEOPLE'] },
-  { x: 0, y: 15, w: 2, kind: 'frame' },
-  { x: 0, y: 25, w: 2, kind: 'motto', text: ['Discover', 'what fits you.'] },
+export const COLLEAGUES: OfficeColleague[] = [
+  { x: 8.1, y: 6.3, view: 'back', shirt: 0x2f6fb5 },
+  { x: 11.6, y: 6.3, view: 'back', shirt: 0xd9a23a },
+  { x: 21.2, y: 6.3, view: 'back', shirt: 0x3f9b6e },
+  { x: 35.4, y: 6.3, view: 'back', shirt: 0x7b6bb8 },
+  { x: 6.9, y: 13.4, view: 'back', shirt: 0xc1543f },
+  { x: 37.6, y: 13.4, view: 'back', shirt: 0x2f6fb5 },
+  { x: 5.6, y: 19.4, view: 'back', shirt: 0x3f9b6e },
+  { x: 39.4, y: 19.9, view: 'back', shirt: 0xd9a23a },
+  { x: 35.2, y: 29.5, view: 'back', shirt: 0x7b6bb8 },
 ];
 
 export const NPCS: OfficeNpc[] = [
@@ -404,7 +267,7 @@ export const NPCS: OfficeNpc[] = [
     personaKey: 'bite-sales-manager',
     name: 'Rin Asakura',
     role: 'Distribution Sales Manager',
-    x: 28, y: 4,
+    x: 34, y: 13,
     color: 0x2563eb,
     stepKey: 'onboarding',
     prompt: 'Talk',
@@ -414,7 +277,7 @@ export const NPCS: OfficeNpc[] = [
     personaKey: 'quickmart-buyer',
     name: 'Yuki Tanaka',
     role: 'Beverage Category Buyer, QuickMart',
-    x: 36, y: 14,
+    x: 27, y: 6,
     color: 0x0f766e,
     stepKey: 'buyer-meeting',
     prompt: 'Talk',
@@ -424,14 +287,15 @@ export const NPCS: OfficeNpc[] = [
     personaKey: null,
     name: 'BITE Reception',
     role: 'Welcome desk',
-    x: 5, y: 3,
+    x: 17, y: 19,
     color: 0x7c8bb0,
     stepKey: null,
     prompt: 'Talk',
   },
 ];
 
-export const SPAWN = { x: 5, y: 5 };
+/** Just inside the entrance, two tiles south of the receptionist. */
+export const SPAWN = { x: 17, y: 21 };
 
 /**
  * The architecture only: everything is wall, then rooms, corridors and doors

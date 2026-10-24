@@ -30,12 +30,12 @@ This build is the **common platform plus the Sales vertical slice**:
   rules, configurable task forms, answer revisions, submissions snapshots,
   AI conversations with server-side hidden-information control, and behavior
   event logging.
-- A 2.5D (isometric) BITE office in Phaser — windowed back walls with a city
-  view, glass meeting rooms, wood/carpet/marble floors with daylight and soft
-  shadows, detailed furniture and seated colleagues, all painted with Canvas 2D,
-  all generated from a map definition with no art assets — wired to React
-  through an explicit event bridge. The game logic still runs on the flat tile
-  grid; only drawing is projected.
+- A BITE office in Phaser drawn as one painted picture of the whole floor
+  (`public/img/office/floor.webp`), with an invisible tile floor plan traced
+  over it for walls, furniture footprints, rooms and NPCs. The picture's name
+  plates are blank, so room names are lettered over them in the student's
+  language; people and seated colleagues are drawn on top with Canvas 2D. It is
+  wired to React through an explicit event bridge.
 
 **Sales vertical slice** — all ten steps, playable:
 
@@ -225,11 +225,11 @@ src/
     repository/           XPassRepository + Drizzle and file implementations
     seed/run.ts           idempotent content seed
   game/office/
-    map.ts                office layout as data (rooms, doors, furniture, NPCs)
-    theme.ts              the office palette and floor materials
-    iso.ts                isometric projection and draw-order (depth) rule
-    art.ts                2.5D pieces painted with Canvas 2D: walls, furniture, people
-    office-scene.ts       Phaser scene: logic on the grid, drawing projected
+    map.ts                floor plan traced over the office picture (rooms, doors, furniture footprints, NPCs)
+    theme.ts              the office palette
+    iso.ts                isometric helpers used by art.ts's pieces
+    art.ts                people (and 2.5D pieces) painted with Canvas 2D
+    office-scene.ts       Phaser scene: the picture, signs and people over the floor plan
     bridge.ts             Phaser → React events
   features/               auth, departments, survey, workspace, office, ai, resources
     lobby/                the illustrated lobby (lobby-art.ts) and the /start onboarding screen
@@ -330,7 +330,7 @@ Then: **Create an account** (email + display name, **no password** — it is a
 development identity, see §8) → the X-PASS lobby (**START**) → pre-survey → choose departments → **Start
 bootcamp** on Sales → work through the ten steps. Returning students sign in at
 `/login` with the email alone. Sign out from the header on any signed-in page.
-Walk into the 2.5D office from the workspace sidebar, or go straight to
+Walk into the office from the workspace sidebar, or go straight to
 `/office`.
 
 Things worth trying, because they are where the design decisions show:
@@ -341,7 +341,7 @@ Things worth trying, because they are where the design decisions show:
 | **Initial Sales Proposal** | Set the wholesale price to ¥150. You get a guardrail warning — and you can still submit it. |
 | **Unexpected Event → Negotiation** | Proposal v1 sits read-only beside the revision form. Nothing is overwritten. |
 | **Day one** | A new account (or a sign-in before the pre-survey is done) opens on `/start`, the X-PASS lobby: INTRO 01/04, **START** begins the pre-survey — one question per screen, keys 1–5 answer, Enter moves on. Questions live in `src/content/pre-survey.ts`. After the survey, sign-in goes to the welcome page. |
-| **The 2.5D office** | WASD/arrows move relative to the screen (up = towards the back wall; up + right walks straight along a corridor). Walk into the Data Room or up to an NPC, press `E`. |
+| **The office** | WASD/arrows move. Walk into the Data Room (the library) or up to an NPC, press `E`. Switch the language and the room signs change with it. |
 | **`/admin/events`** | The ordered behaviour log for your own session — raw rows, no scores. |
 | **`/admin/ai-personas`** | Disclosure rules and trigger topics are shown; hidden fact content is not, anywhere. |
 
@@ -534,10 +534,10 @@ obviously on-topic question still counts as discovery.
   departments and projects but have no scenario content authored.
 - **Object storage adapter.** `resources.file_url` exists; everything is
   currently inline markdown or table data.
-- **Art assets.** The office is generated geometry — deliberately, so a new room
-  is a data change. Sprite art would replace the pieces in `art.ts` (one
-  isometric tile each, sorted by `iso.ts`) without touching the map or the
-  bridge.
+- **Art assets.** The office floor is one painted picture, and `map.ts` is
+  traced from it by hand: regenerating the picture means re-tracing the room
+  rectangles, furniture footprints and sign positions, then running
+  `npm run verify:office`. People are still drawn in code.
 
 ### Languages
 

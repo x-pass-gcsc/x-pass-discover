@@ -45,7 +45,7 @@ cd "$(dirname "$0")/.."
 
 SRC=assets-src
 OUT=public/img
-mkdir -p "$OUT"/{cover,account,product,avatar,scene}
+mkdir -p "$OUT"/{cover,account,product,avatar,scene,office}
 
 # derive <source> <output> <crop|-> <width|WxH>
 derive() {
@@ -79,6 +79,15 @@ echo "scene"
 # Dusk, printed charts, no readable text: dark enough to carry white type, so
 # it backs the decision-revision band rather than sitting in the cover row.
 derive chat/strategy-desk.webp   scene/decision-desk.webp '-'               1600x
+
+echo "office"
+# The office itself: one painted floor shown at exactly 1440x1088, which is the
+# 45x34-tile world in src/game/office/map.ts. The floor plan there is traced
+# from this picture, so regenerating it means re-tracing the map. Its name
+# plates carry only an icon and a blank bar; the room names are written over
+# them in the student's language. The only wordmark is "XPASS Discover" on the
+# reception desk.
+derive office/office-floor.webp  office/floor.webp        '-'               '1440x1088!'
 
 echo "account / product"
 derive chat/quickmart-dusk.webp  account/quickmart.webp   '-'               1200x
