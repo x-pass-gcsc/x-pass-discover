@@ -283,10 +283,11 @@ drizzle/                  generated migration SQL
 
 ## 4. Database schema overview
 
-30 tables. `npm run db:generate` produces the migration from
+31 tables. `npm run db:generate` produces the migrations from
 `src/db/schema/`.
 
-**Identity / structure** — `users`, `companies`, `departments`, `products`,
+**Identity / structure** — `users`, `user_credentials` (password hashes, kept
+out of `users`), `companies`, `departments`, `products`,
 `projects`
 
 > `projects.product_id` is **nullable by design**. Product Management starts
@@ -351,10 +352,12 @@ That is the whole setup. No database, no API key, no `.env`.
 > The first `npm run dev` fetches the Inter and JetBrains Mono webfonts, so it
 > needs network access once. After that it works offline.
 
-Then: **Create an account** (email + display name, **no password** — it is a
-development identity, see §8) → the X-PASS lobby (**START**) → pre-survey → choose departments → **Start
+Then: **Create an account** (email, display name and a password of 8+
+characters, see §8) → the X-PASS lobby (**START**) → pre-survey → choose departments → **Start
 bootcamp** on Sales → work through the ten steps. Returning students sign in at
-`/login` with the email alone. Sign out from the header on any signed-in page.
+`/login` with email and password. Click your name in the header for **My Page**
+(display name, password set/change, your bootcamps). Sign out from the header
+on any signed-in page.
 Walk into the office from the workspace sidebar, or go straight to
 `/office`.
 
@@ -534,23 +537,29 @@ obviously on-topic question still counts as discovery.
 
 **Deliberate placeholders**
 
-- **Authentication.** `src/lib/auth/session.ts` is a signed-cookie *development
-  identity* with no password. The architecture docs prefer Auth.js; this keeps
-  the same narrow seam (`signUp` / `signIn` / `signOut` / `getCurrentUser`) so
-  swapping in Auth.js means reimplementing that one file. **Not production
-  auth**: no password, no email verification, no recovery, and no way to prove
-  the person typing an address owns it. Anyone can sign in as any registered
-  address.
+- **Authentication.** `src/lib/auth/session.ts` is a signed-cookie session with
+  email + password (scrypt via `node:crypto`, `src/lib/auth/password.ts`). The
+  architecture docs prefer Auth.js; the seam (`signUp` / `signIn` / `signOut` /
+  `getCurrentUser`) is unchanged, so swapping it in still means reimplementing
+  that one file. Passwords live in `user_credentials`; setting or changing one
+  ends every other session for that account (a cookie issued before the change
+  is no longer honoured).
 
-  Sign-up and sign-in are separate screens, and `/login` says plainly when an
-  address has no account. That is an enumeration oracle, and it is an honest
-  one here — with no password, an attacker does not need to enumerate anything,
-  they can simply sign in. It is also the only way to stop a typo from silently
-  creating a second, empty account and making a student's work look lost.
-  **When Auth.js lands, that trade expires**: once there is a credential worth
-  guessing, both screens must answer identically to an unauthenticated caller.
-  That is a change to `signIn`/`signUp` and the two routes that call them,
-  nothing downstream.
+  **Accounts created before passwords existed** have no credential row. They
+  still sign in with their email alone, are sent straight to My Page, and are
+  told that anyone who knows the address can sign in as them until they set a
+  password. Once set, it is required.
+
+  Still missing for production auth: email verification, password reset by
+  email, and rate limiting on `/api/auth/login`. `/login` still says plainly
+  when an address has no account — an enumeration oracle, kept while
+  password-less accounts exist (for them it leaks nothing a visitor could not
+  learn by signing in). A wrong password gets one answer whatever it was.
+
+  **Deploying this change needs `npm run db:migrate` against the production
+  database** (it adds `user_credentials`). Until then the app keeps working
+  exactly as before — passwords are ignored on sign-in — and sign-up / setting
+  a password answer with the "run the migration" message.
 - **Evaluation / SKILL FIT.** Tables and the `NE` concept exist; no evidence
   extraction or rating pipeline. The report shows `NE` rather than a number.
 - **Post-survey.** Table exists, no UI.

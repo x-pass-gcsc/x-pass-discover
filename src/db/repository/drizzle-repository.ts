@@ -18,6 +18,7 @@ import type {
   TaskAnswer,
   TaskAnswerRevision,
   User,
+  UserCredential,
 } from '@/types/runtime';
 import type {
   CreateSessionInput,
@@ -84,6 +85,37 @@ export class DrizzleRepository implements XPassRepository {
       .onConflictDoNothing({ target: schema.users.email })
       .returning();
     return row ? this.toUser(row) : null;
+  }
+
+  async updateDisplayName(userId: string, displayName: string): Promise<User | null> {
+    const [row] = await this.db
+      .update(schema.users)
+      .set({ displayName })
+      .where(eq(schema.users.id, userId))
+      .returning();
+    return row ? this.toUser(row) : null;
+  }
+
+  async getCredential(userId: string): Promise<UserCredential | null> {
+    const [row] = await this.db
+      .select()
+      .from(schema.userCredentials)
+      .where(eq(schema.userCredentials.userId, userId))
+      .limit(1);
+    return row
+      ? { userId: row.userId, passwordHash: row.passwordHash, updatedAt: isoReq(row.updatedAt) }
+      : null;
+  }
+
+  async setPasswordHash(userId: string, passwordHash: string, updatedAt: string): Promise<void> {
+    const at = new Date(updatedAt);
+    await this.db
+      .insert(schema.userCredentials)
+      .values({ userId, passwordHash, updatedAt: at })
+      .onConflictDoUpdate({
+        target: schema.userCredentials.userId,
+        set: { passwordHash, updatedAt: at },
+      });
   }
 
   private toUser(row: typeof schema.users.$inferSelect): User {

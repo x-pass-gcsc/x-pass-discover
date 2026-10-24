@@ -6,10 +6,11 @@ import { useState } from 'react';
 import { Button, Card, Field, inputClass } from '@/components/ui';
 import { Logo } from '@/components/branding';
 import { useT } from '@/i18n/client';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/auth/password-rules';
 
 /**
- * Account creation. The counterpart to `LoginForm`, and the only place the
- * display name is set.
+ * Account creation, with its password. The counterpart to `LoginForm`. The
+ * display name chosen here can be changed later on My Page.
  *
  * An email that already has an account is refused here and sent to sign-in,
  * rather than quietly signing the visitor in. The two outcomes are genuinely
@@ -22,18 +23,28 @@ export function SignupForm({ initialEmail = '' }: { initialEmail?: string }) {
   const t = useT();
   const [email, setEmail] = useState(initialEmail);
   const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setError({ message: t('auth.passwordTooShort', { min: PASSWORD_MIN_LENGTH }) });
+      return;
+    }
+    if (password !== confirm) {
+      setError({ message: t('auth.passwordMismatch') });
+      return;
+    }
     setPending(true);
     setError(null);
     try {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, displayName }),
+        body: JSON.stringify({ email, displayName, password }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -86,6 +97,35 @@ export function SignupForm({ initialEmail = '' }: { initialEmail?: string }) {
             className={inputClass}
             placeholder={t('auth.displayNamePlaceholder')}
             autoComplete="name"
+          />
+        </Field>
+        <Field
+          label={t('auth.password')}
+          helpText={t('auth.passwordHint', { min: PASSWORD_MIN_LENGTH })}
+          required
+        >
+          <input
+            type="password"
+            required
+            minLength={PASSWORD_MIN_LENGTH}
+            maxLength={PASSWORD_MAX_LENGTH}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={inputClass}
+            autoComplete="new-password"
+            data-testid="password"
+          />
+        </Field>
+        <Field label={t('auth.passwordConfirm')} required>
+          <input
+            type="password"
+            required
+            maxLength={PASSWORD_MAX_LENGTH}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            className={inputClass}
+            autoComplete="new-password"
+            data-testid="password-confirm"
           />
         </Field>
 

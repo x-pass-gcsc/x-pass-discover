@@ -61,18 +61,24 @@ async function main() {
     body.error,
   );
 
-  console.log('\n=== applying generated migration ===');
+  console.log('\n=== applying generated migrations, in order ===');
   const dir = path.join(ROOT, 'drizzle');
-  const file = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()[0];
-  const sql = readFileSync(path.join(dir, file), 'utf8');
-  for (const statement of sql.split('--> statement-breakpoint')) {
-    const trimmed = statement.trim();
-    if (trimmed) await client.exec(trimmed);
+  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  for (const file of files) {
+    const sql = readFileSync(path.join(dir, file), 'utf8');
+    for (const statement of sql.split('--> statement-breakpoint')) {
+      const trimmed = statement.trim();
+      if (trimmed) await client.exec(trimmed);
+    }
   }
   const tables = await client.query<{ count: number }>(
     `select count(*)::int as count from information_schema.tables where table_schema='public'`,
   );
-  check(`migration applied (${file})`, tables.rows[0].count === 30, `${tables.rows[0].count} tables`);
+  check(
+    `migrations applied (${files.join(', ')})`,
+    tables.rows[0].count === 31,
+    `${tables.rows[0].count} tables`,
+  );
 
   const nullable = await client.query<{ is_nullable: string }>(
     `select is_nullable from information_schema.columns where table_name='projects' and column_name='product_id'`,
@@ -165,6 +171,21 @@ async function main() {
   check('createUser refuses an email that already has an account', duplicate === null);
   check('the existing account is untouched', (await repo.getUser(user.id))?.displayName === 'PG Student');
   check('and there is still only one of it', (await counts('users')) === 1);
+
+  check('a new account has no password yet', (await repo.getCredential(user.id)) === null);
+  const firstSet = new Date('2026-01-01T00:00:00.123Z').toISOString();
+  await repo.setPasswordHash(user.id, 'hash-one', firstSet);
+  const credential = await repo.getCredential(user.id);
+  check('setPasswordHash stores the hash', credential?.passwordHash === 'hash-one');
+  check('and the moment it was set, to the millisecond', credential?.updatedAt === firstSet);
+  await repo.setPasswordHash(user.id, 'hash-two', new Date().toISOString());
+  check('changing the password replaces it', (await repo.getCredential(user.id))?.passwordHash === 'hash-two');
+  check('one credential row per account', (await counts('user_credentials')) === 1);
+  check(
+    'updateDisplayName renames',
+    (await repo.updateDisplayName(user.id, 'PG Renamed'))?.displayName === 'PG Renamed',
+  );
+  await repo.updateDisplayName(user.id, 'PG Student');
 
   await repo.savePreSurvey(user.id, { interest_sales: 5 });
   check('pre-survey upsert', (await repo.getPreSurvey(user.id))?.answers.interest_sales === 5);

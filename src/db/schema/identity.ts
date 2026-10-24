@@ -96,3 +96,21 @@ export const projects = pgTable(
   },
   (table) => [uniqueIndex('projects_key_idx').on(table.key)],
 );
+
+/**
+ * A user's password, kept out of `users` on purpose.
+ *
+ * Every page resolves the signed-in user through `users`, and none of them has
+ * any business holding a password hash. A row exists only once a password has
+ * been set: accounts created before passwords existed have none, and sign in
+ * with their email alone until they set one on My Page.
+ */
+export const userCredentials = pgTable('user_credentials', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** `scrypt$N$r$p$salt$hash` — see `lib/auth/password.ts`. */
+  passwordHash: text('password_hash').notNull(),
+  /** Sessions issued before this moment are no longer honoured. */
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+});

@@ -5,7 +5,7 @@ import { getT } from '@/i18n/server';
 import { SignOutButton } from './sign-out-button';
 
 /**
- * Who you are signed in as, and the way out.
+ * Who you are signed in as (a link to My Page), and the way out.
  *
  * Rendered by `AppShell` and by the landing page, so every screen a signed-in
  * student can reach offers a sign-out — including a shared classroom machine,
@@ -31,12 +31,15 @@ export async function AccountMenu() {
   return (
     <div className="flex shrink-0 items-center gap-2" data-testid="account-menu">
       <LanguageSwitcher />
-      <span
-        className="hidden max-w-[16ch] truncate text-[11px] text-muted sm:inline"
-        title={user.email}
+      <Link
+        href="/mypage"
+        data-testid="mypage-link"
+        className="max-w-[16ch] truncate rounded-lg px-1.5 py-1 text-[11px] text-muted transition-colors hover:bg-sunken hover:text-strong"
+        title={`${t('common.myPage')} · ${user.email}`}
       >
-        {user.displayName}
-      </span>
+        <span className="sm:hidden">{t('common.myPage')}</span>
+        <span className="hidden sm:inline">{user.displayName}</span>
+      </Link>
       <SignOutButton />
     </div>
   );

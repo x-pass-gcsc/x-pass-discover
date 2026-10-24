@@ -8,9 +8,8 @@ import { Logo } from '@/components/branding';
 import { useT } from '@/i18n/client';
 
 /**
- * Development identity, not authentication. There is no password: this exists
- * so sessions, submissions and behavior events are attributed to a stable user.
- * Replacing it with Auth.js means changing `lib/auth/session.ts` and this form.
+ * Email and password. The password is optional only for accounts created
+ * before passwords existed; those are signed in and sent to My Page to set one.
  *
  * Sign-in asks for the email and nothing else — the display name belongs to the
  * account, and it was given when the account was created. An address with no
@@ -22,6 +21,7 @@ export function LoginForm({ initialEmail = '' }: { initialEmail?: string }) {
   const router = useRouter();
   const t = useT();
   const [email, setEmail] = useState(initialEmail);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -33,7 +33,7 @@ export function LoginForm({ initialEmail = '' }: { initialEmail?: string }) {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -41,13 +41,16 @@ export function LoginForm({ initialEmail = '' }: { initialEmail?: string }) {
           message:
             data.code === 'account_not_found'
               ? t('auth.login.notFound')
-              : (data.error ?? t('auth.login.failed')),
+              : data.code === 'invalid_credentials'
+                ? t('auth.login.invalid')
+                : (data.error ?? t('auth.login.failed')),
           code: data.code,
         });
         setPending(false);
         return;
       }
-      router.push('/start');
+      // An account with no password yet goes straight to where it can set one.
+      router.push(data.needsPassword ? '/mypage' : '/start');
       router.refresh();
     } catch {
       setError({ message: t('auth.login.offline') });
@@ -74,6 +77,16 @@ export function LoginForm({ initialEmail = '' }: { initialEmail?: string }) {
             className={inputClass}
             placeholder={t('auth.emailPlaceholder')}
             autoComplete="email"
+          />
+        </Field>
+        <Field label={t('auth.password')} helpText={t('auth.login.passwordHint')}>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={inputClass}
+            autoComplete="current-password"
+            data-testid="password"
           />
         </Field>
 
