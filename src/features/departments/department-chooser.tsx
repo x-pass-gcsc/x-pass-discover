@@ -32,6 +32,14 @@ export function DepartmentChooser({
   const [selected, setSelected] = useState<string[]>(initialSelection);
   const [busy, setBusy] = useState<string | null>(null);
 
+  const playableDepartments = departments
+    .filter((d) => d.status === 'playable')
+    .map((d) => d.name);
+  const playableNames =
+    playableDepartments.length > 1
+      ? `${playableDepartments.slice(0, -1).join(', ')} and ${playableDepartments[playableDepartments.length - 1]} are`
+      : `${playableDepartments[0] ?? 'Nothing'} is`;
+
   const sessionFor = (slug: string) =>
     sessions.find((s) => s.departmentSlug === slug) ?? null;
 
@@ -115,7 +123,7 @@ export function DepartmentChooser({
           </div>
           <p className="text-[11px] text-muted">
             <span className="font-semibold text-strong">{selected.length}</span> of 3
-            selected · Sales is playable in this build; the others run on the same engine.
+            selected · {playableNames} playable in this build; the others run on the same engine.
           </p>
         </div>
         <Button

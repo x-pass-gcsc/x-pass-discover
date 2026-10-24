@@ -246,7 +246,7 @@ export function ChatPanel({
                 className={inputClass}
                 value={draft}
                 disabled={readOnly || sending}
-                placeholder="Ask a question that could change your proposal…"
+                placeholder="Ask a question that could change your decision…"
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {

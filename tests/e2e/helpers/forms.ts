@@ -15,7 +15,7 @@ import { openStep, taskCard } from './app';
 export type FieldValue = string | number;
 
 /**
- * Deal numbers that satisfy every BITE guardrail, so a walkthrough that is not
+ * Numbers that satisfy every BITE guardrail, so a walkthrough that is not
  * about guardrails does not trip one by accident. Wholesale ¥180 clears the
  * ¥165 floor and leaves ¥62 of unit contribution against a ¥47 floor; retail
  * ¥280 is under QuickMart's ¥300 ceiling at a 35.7% retail margin.
@@ -28,6 +28,9 @@ const COMPLIANT_NUMBERS: Record<string, number> = {
   extra_promotion_yen: 8,
   sales_target_units_per_store_per_day: 3,
   payment_terms_days: 30,
+  // HR: inside the offer band, at the midpoint, so no justification is owed.
+  proposed_base_salary_yen: 9_500_000,
+  sign_on_bonus_yen: 0,
 };
 
 function humanize(key: string): string {

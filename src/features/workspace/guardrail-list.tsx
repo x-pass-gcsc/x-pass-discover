@@ -25,7 +25,7 @@ export function GuardrailList({ warnings }: { warnings: GuardrailWarning[] }) {
           >
             <div className="flex items-center gap-2">
               <Badge tone={isViolation ? 'danger' : 'warn'}>
-                {isViolation ? 'Outside BITE guardrail' : 'QuickMart criteria'}
+                {warning.category ?? (isViolation ? 'Outside BITE guardrail' : 'Advisory')}
               </Badge>
               <span className="text-xs font-semibold text-strong">{warning.title}</span>
             </div>

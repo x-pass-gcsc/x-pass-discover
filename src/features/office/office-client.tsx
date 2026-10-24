@@ -104,7 +104,7 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
     return {
       kind: 'message',
       title: 'No active bootcamp',
-      body: 'Start the Sales bootcamp from the departments page, then come back — your desk, the Data Room and the meeting rooms will be wired to that session.',
+      body: 'Start a bootcamp from the departments page, then come back — your desk, the Data Room and the meeting rooms will be wired to that session.',
     };
   }
 
@@ -115,6 +115,9 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
   function resolveStep(personaKey: string, fallback: string | null): string | null {
     const current = viewRef.current;
     if (!current) return fallback;
+    // The office is shared by every department, so an NPC may belong to a
+    // scenario this session is not running.
+    if (!current.personas.some((p) => p.key === personaKey)) return null;
     const matching = current.steps.filter((step) =>
       step.tasks.some((task) => task.personaKey === personaKey),
     );
@@ -145,6 +148,15 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
 
     if (!current) {
       setOverlay(noSessionMessage());
+      return;
+    }
+
+    if (!current.personas.some((p) => p.key === npc.personaKey)) {
+      setOverlay({
+        kind: 'message',
+        title: npc.name,
+        body: `${npc.name} (${npc.role}) is not part of your current bootcamp — nothing is scheduled with them today.`,
+      });
       return;
     }
 
@@ -181,7 +193,12 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
         step.unlocked &&
         step.status !== 'completed',
     );
-    const personaKey = meetingStep?.tasks.find((t) => t.personaKey)?.personaKey;
+    // A step can hold several conversations (three interviews, say): open the
+    // first one that is still to be had.
+    const personaTasks = meetingStep?.tasks.filter((t) => t.personaKey) ?? [];
+    const personaKey = (
+      personaTasks.find((t) => t.status !== 'complete') ?? personaTasks[0]
+    )?.personaKey;
     if (!meetingStep || !personaKey) {
       setOverlay({
         kind: 'message',
@@ -269,8 +286,8 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
           <p className="text-[11px] leading-relaxed text-muted">
             Walk to <strong className="text-strong">My Desk</strong> to open your
             workspace, the <strong className="text-strong">Data Room</strong> to browse
-            files, or <strong className="text-strong">Meeting Room A</strong> to meet the
-            buyer. Press{' '}
+            files, or <strong className="text-strong">Meeting Room A</strong> for your
+            next meeting. Press{' '}
             <kbd className="rounded border border-line bg-sunken px-1 py-px font-mono text-[10px] text-strong">
               E
             </kbd>{' '}
@@ -344,7 +361,7 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
                 </ol>
               ) : (
                 <EmptyState>
-                  You are exploring the office as a visitor. Start the Sales bootcamp to
+                  You are exploring the office as a visitor. Start a bootcamp to
                   wire the desk, Data Room and meeting rooms to a real session.
                 </EmptyState>
               )}

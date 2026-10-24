@@ -116,12 +116,28 @@ async function main() {
     (await client.query<{ c: number }>(`select count(*)::int as c from ${table}`)).rows[0].c;
   check('5 departments seeded', (await counts('departments')) === 5);
   check('5 projects seeded', (await counts('projects')) === 5);
-  check('1 scenario version seeded', (await counts('scenario_versions')) === 1);
-  check('10 scenario steps seeded', (await counts('scenario_steps')) === 10, `${await counts('scenario_steps')}`);
-  check('tasks seeded', (await counts('tasks')) >= 12, `${await counts('tasks')}`);
-  check('9 resources seeded', (await counts('resources')) === 9, `${await counts('resources')}`);
-  check('2 personas seeded', (await counts('ai_personas')) === 2);
-  check('persona facts seeded', (await counts('persona_facts')) === 7, `${await counts('persona_facts')}`);
+  // Expected counts come from the content registry, so authoring a scenario
+  // makes this check stricter rather than wrong.
+  const { listScenarios, listResources } = await import('@/content/registry');
+  const { listPersonas } = await import('@/content/personas.server');
+  const scenarios = listScenarios();
+  const expected = {
+    versions: scenarios.length,
+    steps: scenarios.reduce((n, s) => n + s.steps.length, 0),
+    tasks: scenarios.reduce((n, s) => n + s.steps.reduce((m, step) => m + step.tasks.length, 0), 0),
+    resources: scenarios.reduce((n, s) => n + listResources(s.scenarioKey).length, 0),
+    personas: scenarios.reduce((n, s) => n + listPersonas(s.scenarioKey).length, 0),
+    facts: scenarios.reduce(
+      (n, s) => n + listPersonas(s.scenarioKey).reduce((m, p) => m + p.facts.length, 0),
+      0,
+    ),
+  };
+  check(`${expected.versions} scenario versions seeded`, (await counts('scenario_versions')) === expected.versions, `${await counts('scenario_versions')}`);
+  check(`${expected.steps} scenario steps seeded`, (await counts('scenario_steps')) === expected.steps, `${await counts('scenario_steps')}`);
+  check(`${expected.tasks} tasks seeded`, (await counts('tasks')) === expected.tasks, `${await counts('tasks')}`);
+  check(`${expected.resources} resources seeded (keys unique across scenarios)`, (await counts('resources')) === expected.resources, `${await counts('resources')}`);
+  check(`${expected.personas} personas seeded`, (await counts('ai_personas')) === expected.personas, `${await counts('ai_personas')}`);
+  check(`${expected.facts} persona facts seeded`, (await counts('persona_facts')) === expected.facts, `${await counts('persona_facts')}`);
   check('step_resources linked', (await counts('step_resources')) > 0);
 
   const nullProduct = await client.query<{ c: number }>(
@@ -131,7 +147,8 @@ async function main() {
 
   console.log('\n=== seed is idempotent ===');
   await seed(db as never);
-  check('re-seed keeps 10 steps (no duplicates)', (await counts('scenario_steps')) === 10, `${await counts('scenario_steps')}`);
+  check(`re-seed keeps ${expected.steps} steps (no duplicates)`, (await counts('scenario_steps')) === expected.steps, `${await counts('scenario_steps')}`);
+  check(`re-seed keeps ${expected.resources} resources`, (await counts('resources')) === expected.resources, `${await counts('resources')}`);
   check('re-seed keeps 5 departments', (await counts('departments')) === 5);
 
   console.log('\n=== exercising DrizzleRepository through the real services ===');
@@ -206,6 +223,19 @@ async function main() {
   const stored = await repo.getConversation(buyerConv.id);
   check('revealed_fact_ids written to Postgres', stored?.revealedFactIds.includes('morning_velocity'));
 
+  console.log('\n=== second scenario (HR) on the same engine ===');
+  const hrSession = await startSession(user.id, 'human-resources');
+  check('HR session joins back its own keys',
+    hrSession.scenarioKey === 'hr-cn-expansion' && hrSession.projectKey === 'hr-cn-expansion-talent',
+    `${hrSession.projectKey}/${hrSession.scenarioKey}`);
+  const hrView = await loadSessionView(hrSession.id, user.id);
+  check('HR session view builds from Postgres', hrView.steps.length === 11, `${hrView.steps.length}`);
+  const interview = await sendStudentMessage(hrSession, 'candidate-sato', 'candidate-interviews', 'What did you personally do in those distributor deals — who signed them?');
+  check('a candidate interview discloses on its own ledger', interview.discoveredFactCount === 1, `${interview.discoveredFactCount}`);
+  const otherCandidate = await openConversation(hrSession, 'candidate-lin', 'candidate-interviews');
+  check('a second candidate in the same step has a separate transcript',
+    otherCandidate.id !== interview.id && otherCandidate.discoveredFactCount === 0);
+
   console.log('\n=== submissions and events ===');
   const submission = await repo.createSubmission({
     sessionId: session.id, taskKey: 'final-proposal', title: 'QuickMart Final Sales Proposal', snapshot: { a: 1 },
@@ -218,7 +248,7 @@ async function main() {
   check('event types include ai_fact_revealed', events.some((e) => e.eventType === 'ai_fact_revealed'));
 
   console.log('\n=== session listing / isolation ===');
-  check('listSessionsForUser', (await repo.listSessionsForUser(user.id)).length === 1);
+  check('listSessionsForUser', (await repo.listSessionsForUser(user.id)).length === 2);
   const other = await repo.createUser({ email: 'other-pg@example.com', displayName: 'Other' });
   if (!other) throw new Error('createUser returned null on a fresh email');
   check('other user has no sessions', (await repo.listSessionsForUser(other.id)).length === 0);
