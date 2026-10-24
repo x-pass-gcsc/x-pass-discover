@@ -35,7 +35,14 @@ test.describe('the student journey', () => {
       await page.getByTestId('start-lobby-next').click();
       await page.waitForURL('**/pre-survey');
 
-      await completePreSurvey(page, { interest_sales: 5, interest_marketing: 2 });
+      // Strongly drawn to sales, not much to marketing; everything else neutral-high.
+      const scores = Object.fromEntries(
+        Array.from({ length: 15 }, (_, i) => String(i + 1).padStart(2, '0')).flatMap((n) => [
+          [`SAL_${n}`, 5],
+          [`MKT_${n}`, 2],
+        ]),
+      );
+      await completePreSurvey(page, scores);
       await startBootcamp(page, slug);
 
       const stepKeys = await page
