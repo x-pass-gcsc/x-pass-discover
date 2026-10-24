@@ -111,7 +111,10 @@ export async function completePreSurvey(
     await question.waitFor();
     const key = (await question.getAttribute('data-question-key')) ?? '';
     const kind = await question.getAttribute('data-question-kind');
+    const progress = (await page.getByTestId('survey-progress').textContent()) ?? '';
+    const [current, total] = progress.split('/').map((n) => Number(n.trim()));
     if (kind === 'scale') {
+      // Picking a score moves on by itself; on the last question it submits.
       await question
         .getByRole('button', { name: String(scores[key] ?? 4), exact: true })
         .click();
@@ -119,11 +122,9 @@ export async function completePreSurvey(
       await question
         .locator('textarea')
         .fill('I think I like work where I have to defend a decision with evidence.');
+      await page.getByTestId('survey-next').click();
     }
-    const next = page.getByTestId('survey-next');
-    const submits = (await next.textContent())?.includes('Submit');
-    await next.click();
-    if (submits) break;
+    if (current === total) break;
     await expect(question).not.toHaveAttribute('data-question-key', key);
   }
   await page.waitForURL('**/departments');
