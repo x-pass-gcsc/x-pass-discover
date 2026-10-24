@@ -412,24 +412,27 @@ Vercel needs no configuration file.
    | `X_PASS_ADMIN_EMAILS` | Optional | `/admin` is **closed** in production unless an email is allow-listed |
    | `NEXT_PUBLIC_APP_URL` | Optional | Your deployment URL |
 
-3. **With `DATABASE_URL` set, run the migration and seed once against that
-   database before the first real session.** A fresh Neon database is empty —
-   setting the connection string does not create the tables:
+3. **Vercel sets up the database on every deploy.** With `DATABASE_URL`
+   set, `npm run build` first runs `scripts/deploy-db.ts`, which applies any
+   pending migrations and runs the content seed, then builds the app. Both are
+   idempotent, so this is safe on every deploy; a database that cannot be
+   reached or migrated fails the build rather than the first sign-up. It only
+   acts on Vercel builds (`VERCEL=1`) — a local or CI `npm run build` never
+   touches a database — or when forced with `X_PASS_MIGRATE_ON_BUILD=1`.
+
+   On any other host, or to set a database up by hand, run the same steps
+   from a checkout of this repository:
 
    ```bash
    DATABASE_URL='postgres://…' npm run db:setup   # migrate, then seed
    ```
 
-   Skip it and the deployment looks healthy until the first write. Both halves
-   fail with the instruction rather than a driver error — *“This deployment's
-   database has no tables yet…”* if the migration is missing, *“Scenario content
-   is not seeded…”* if only the seed is. Running `db:setup` fixes either; it is
-   idempotent, so re-running it against a database that is already set up is
-   safe.
-
-   Run it from a checkout of this repository — the seed is a TypeScript script
-   that mirrors the content registry into the tables, so pasting the migration
-   SQL into a database console gets you only half of it.
+   Without it a fresh Neon database is empty, and the app answers with the
+   instruction rather than a driver error — *“This deployment's database has
+   no tables yet…”* if the migration is missing, *“Scenario content is not
+   seeded…”* if only the seed is. The seed is a TypeScript script that mirrors
+   the content registry into the tables, so pasting the migration SQL into a
+   database console gets you only half of it.
 
 **Demo mode.** A serverless filesystem is read-only and per-instance, so the
 local file store cannot be used in production. A production build with no
@@ -556,8 +559,8 @@ obviously on-topic question still counts as discovery.
   password-less accounts exist (for them it leaks nothing a visitor could not
   learn by signing in). A wrong password gets one answer whatever it was.
 
-  **Deploying this change needs `npm run db:migrate` against the production
-  database** (it adds `user_credentials`). Until then the app keeps working
+  It adds the `user_credentials` table; a Vercel deploy applies the migration
+  itself (see Deploying), anywhere else run `npm run db:migrate`. Until then the app keeps working
   exactly as before — passwords are ignored on sign-in — and sign-up / setting
   a password answer with the "run the migration" message.
 - **Evaluation / SKILL FIT.** Tables and the `NE` concept exist; no evidence
