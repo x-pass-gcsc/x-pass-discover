@@ -233,7 +233,7 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
             </span>
           </div>
 
-          <div className="pointer-events-none absolute bottom-4 right-4 w-[200px] rounded-xl border border-line bg-canvas p-1.5">
+          <div className="pointer-events-none absolute bottom-4 right-4 w-[200px] rounded-xl border border-white/10 bg-[#1b2232]/90 p-1.5 shadow-float">
             <Minimap player={playerTile} activeRoomKey={zoneKey} />
           </div>
 

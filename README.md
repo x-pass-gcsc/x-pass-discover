@@ -30,9 +30,11 @@ This build is the **common platform plus the Sales vertical slice**:
   rules, configurable task forms, answer revisions, submissions snapshots,
   AI conversations with server-side hidden-information control, and behavior
   event logging.
-- A 2D BITE office in Phaser — floors, walls with faked height, procedural
-  furniture and characters, all generated from a map definition with no art
-  assets — wired to React through an explicit event bridge.
+- A 2D BITE office in Phaser — a painted floor (`public/img/office/floor.webp`,
+  generated against the tile grid) under procedural furniture and characters,
+  with collision always taken from the map definition and a fully procedural
+  fallback if the image is missing — wired to React through an explicit event
+  bridge.
 
 **Sales vertical slice** — all ten steps, playable:
 
@@ -224,7 +226,7 @@ src/
   game/office/
     map.ts                office layout as data (rooms, doors, furniture, NPCs)
     theme.ts              the office palette — the whole look lives here
-    office-scene.ts       Phaser scene (procedural rendering, no art assets)
+    office-scene.ts       Phaser scene (painted floor + procedural furniture)
     bridge.ts             Phaser → React events
   features/               auth, departments, survey, workspace, office, ai, resources
   app/                    routes (student, admin, api)
@@ -523,8 +525,11 @@ obviously on-topic question still counts as discovery.
   departments and projects but have no scenario content authored.
 - **Object storage adapter.** `resources.file_url` exists; everything is
   currently inline markdown or table data.
-- **Art assets.** The office is generated geometry — deliberately, so a new room
-  is a data change. Sprite art would replace `office-scene.ts`'s paint methods
+- **Art assets.** The floor, walls and wall decor are one painted image laid
+  exactly over the 46×30 tile grid; furniture and characters are still
+  generated geometry. Changing room geometry in `map.ts` means regenerating
+  that image (see `scripts/build-image-assets.sh`). Furniture and character
+  sprites are the next step and would replace `drawProp` / `drawCharacter`
   without touching the map or the bridge.
 
 ---
