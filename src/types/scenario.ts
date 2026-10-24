@@ -70,7 +70,13 @@ export type TaskField = {
    */
   evidenceSources?: Array<
     | { kind: 'resources' }
-    | { kind: 'conversation'; personaKey: string; stepKey: string }
+    | {
+        kind: 'conversation';
+        personaKey: string;
+        stepKey: string;
+        /** How the picker groups these lines, e.g. "What the buyer said". */
+        label?: string;
+      }
   >;
   /**
    * Opt-in commercial helpers (margin, contribution). The engine stays generic:
@@ -114,7 +120,21 @@ export type TaskDefinition = {
   completion: TaskCompletionRule;
   /** Keys of guardrail checks to evaluate on save. Warn, never auto-correct. */
   guardrailKeys?: string[];
+  /**
+   * For `ai_conversation` tasks: `negotiation` is the decision-stage
+   * conversation (terms are traded, a position is defended); `meeting` is
+   * discovery. The persona supplies what each mode means for it.
+   */
+  conversationMode?: ConversationMode;
+  /**
+   * For `ai_conversation` tasks: answers whose guardrail violations steer the
+   * persona during this conversation ("do not treat this as agreed") without
+   * telling it why. Checked in order; the first violation is enough.
+   */
+  steeringTaskKeys?: string[];
 };
+
+export type ConversationMode = 'meeting' | 'negotiation';
 
 export type UnlockRule =
   | { type: 'always' }
@@ -177,6 +197,12 @@ export type ScenarioVersionDefinition = {
   mission: string;
   finalOutputTitle: string;
   deadlineHours: number;
+  /**
+   * Public framing every persona in this scenario is given — the product, the
+   * account, the role being hired. The student can read all of it in the Data
+   * Room; it is never a place for hidden information.
+   */
+  aiContext: string;
   steps: ScenarioStepDefinition[];
 };
 
@@ -195,7 +221,6 @@ export type DepartmentDefinition = {
   accentColor: string;
   /** Illustration shown on the department card and the workspace header. */
   coverImage: string;
-  /** Only Sales is playable in this milestone. */
   status: 'playable' | 'coming_soon';
   scenarioKey: string | null;
 };

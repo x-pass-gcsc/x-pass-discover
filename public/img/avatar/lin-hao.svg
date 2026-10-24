@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="LH">
+  <rect width="320" height="320" fill="#7c3aed"/>
+  <circle cx="160" cy="128" r="58" fill="#ffffff" fill-opacity="0.22"/>
+  <path d="M60 320c8-62 52-98 100-98s92 36 100 98z" fill="#ffffff" fill-opacity="0.22"/>
+  <text x="160" y="146" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="56" font-weight="600" fill="#ffffff">LH</text>
+</svg>

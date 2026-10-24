@@ -5,6 +5,7 @@ import type { PublicPersona } from '@/types/ai';
 import type { Translations } from './localize';
 import { SALES_PERSONAS } from './sales/personas.server';
 import { SALES_PERSONA_TRANSLATIONS } from './sales/personas.i18n.server';
+import { HR_PERSONAS } from './hr/personas.server';
 
 /**
  * SERVER-ONLY persona registry.
@@ -16,6 +17,7 @@ import { SALES_PERSONA_TRANSLATIONS } from './sales/personas.i18n.server';
 
 const PERSONAS_BY_SCENARIO: Record<string, PersonaDefinition[]> = {
   'sales-quickmart': SALES_PERSONAS,
+  'hr-cn-expansion': HR_PERSONAS,
 };
 
 /**

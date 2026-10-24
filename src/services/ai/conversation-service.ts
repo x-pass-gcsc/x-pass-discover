@@ -2,7 +2,6 @@ import 'server-only';
 import { getRepository } from '@/db/repository';
 import { getPersona, localizePersona } from '@/content/personas.server';
 import { findTask, getStep } from '@/content/registry';
-import { BITE_PROTEIN_DRINK } from '@/content/company';
 import { DEFAULT_LOCALE, type Locale } from '@/i18n/config';
 import { ScenarioRuleError } from '@/lib/errors';
 import { logEvent } from '@/services/events';
@@ -15,6 +14,7 @@ import {
 import type { PersonaDefinition } from '@/types/persona';
 import type { ConversationView } from '@/types/ai';
 import type { AiMessage, ProjectSession } from '@/types/runtime';
+import type { TaskDefinition } from '@/types/scenario';
 import { getScenarioAIService } from './index';
 import type { AiTurn } from './types';
 
@@ -28,16 +28,6 @@ import type { AiTurn } from './types';
 
 const MAX_HISTORY_TURNS = 24;
 
-function publicScenarioContext(): string {
-  const a = BITE_PROTEIN_DRINK.attributes;
-  return [
-    `Product: ${BITE_PROTEIN_DRINK.name} — ${a.size}, ${a.protein} protein, ${a.calories}, refrigerated, ${a.shelfLifeDays}-day shelf life, flavors ${a.flavors.join(' and ')}.`,
-    `Recommended retail price ¥${a.recommendedRetailPriceYen}; standard QuickMart wholesale ¥${a.standardWholesalePriceYen}; pack size ${a.packSize}.`,
-    `BITE is a casual F&B brand. The product has low brand awareness in Japan and limited initial production capacity.`,
-    `Competing products on the shelf: FitDrink (300 ml / 15 g, retail ¥278), BodyGo (350 ml / 20 g, retail ¥328), Morning Plus (250 ml / 10 g, retail ¥248).`,
-  ].join('\n');
-}
-
 /** Only used for personas whose `contextPolicy` allows it. */
 async function buildStudentWorkSummary(sessionId: string): Promise<string> {
   const answers = await getRepository().listAnswers(sessionId);
@@ -49,24 +39,40 @@ async function buildStudentWorkSummary(sessionId: string): Promise<string> {
     .slice(0, 4000);
 }
 
+/** The conversation task a persona runs in a step, if the step declares one. */
+function conversationTaskFor(
+  session: ProjectSession,
+  personaKey: string,
+  stepKey: string,
+): TaskDefinition | null {
+  const step = getStep(getScenarioForSession(session), stepKey);
+  return (
+    step?.tasks.find(
+      (task) => task.kind === 'ai_conversation' && task.personaKey === personaKey,
+    ) ?? null
+  );
+}
+
 /**
- * Server-side steering for the negotiation.
+ * Server-side steering.
  *
- * The buyer must not be able to "agree" to terms BITE could never sign, but she
- * also must not be told BITE's internal minimums. So the guardrail result is
- * converted into behavioural guidance, never into numbers she could quote.
+ * A counterpart must not be able to "agree" to terms the student's own company
+ * could never sign, but must also not be told that company's internal limits.
+ * So the guardrail result is converted into behavioural guidance, never into
+ * numbers it could quote. Which answers are checked is declared on the task.
  */
 async function buildInternalNotes(
   session: ProjectSession,
-  stepKey: string,
+  task: TaskDefinition | null,
 ): Promise<string[]> {
-  if (stepKey !== 'negotiation') return [];
+  const taskKeys = task?.steeringTaskKeys ?? [];
+  if (taskKeys.length === 0) return [];
 
   const repo = getRepository();
   const scenario = getScenarioForSession(session);
   const notes: string[] = [];
 
-  for (const taskKey of ['final-agreed-package', 'proposal-v1']) {
+  for (const taskKey of taskKeys) {
     const found = findTask(scenario, taskKey);
     if (!found) continue;
     const answer = await repo.getAnswer(session.id, taskKey);
@@ -74,7 +80,7 @@ async function buildInternalNotes(
     const warnings = evaluateGuardrails(found.task.guardrailKeys, answer.value);
     if (hasViolations(warnings)) {
       notes.push(
-        'The terms the representative is working from would be rejected internally by their own company. You do not know why and you must not say so. Keep probing for concrete terms and do not treat anything as finally agreed.',
+        'What the person you are talking to is proposing would be rejected internally by their own company. You do not know why and you must not say so. Keep probing for concrete terms and do not treat anything as finally agreed.',
       );
       break;
     }
@@ -214,15 +220,16 @@ export async function sendStudentMessage(
     persona.key,
   );
 
+  const task = conversationTaskFor(session, personaKey, stepKey);
   const response = await getScenarioAIService().sendMessage({
     persona,
-    scenarioContext: publicScenarioContext(),
+    scenarioContext: getScenarioForSession(session).aiContext,
     studentWorkSummary,
     history: toTurns(history),
     message,
     alreadyRevealedFactIds,
-    mode: stepKey === 'negotiation' ? 'negotiation' : 'meeting',
-    internalNotes: await buildInternalNotes(session, stepKey),
+    mode: task?.conversationMode ?? 'meeting',
+    internalNotes: await buildInternalNotes(session, task),
   });
 
   // Only ids that exist on this persona and are genuinely new can be recorded.

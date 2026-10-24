@@ -71,7 +71,7 @@ export function useEvidenceOptions(
                 value: `message:${m.id}`,
                 label:
                   m.content.length > 90 ? `${m.content.slice(0, 90)}…` : m.content,
-                group: buyerSaidGroup,
+                group: source.label ?? buyerSaidGroup,
               })),
           );
         } catch {

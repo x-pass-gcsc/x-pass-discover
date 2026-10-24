@@ -1,4 +1,4 @@
-import { BITE_SALES_GUARDRAILS } from '@/content/company';
+import { BITE_HR_OFFER_POLICY, BITE_SALES_GUARDRAILS } from '@/content/company';
 import type { AnswerValue } from '@/types/runtime';
 import { computeDealEconomics } from './calculators';
 
@@ -6,8 +6,9 @@ import { computeDealEconomics } from './calculators';
  * Guardrail evaluation.
  *
  * Guardrails WARN. They never silently correct an answer and never block a
- * save. `severity: 'violation'` means the deal breaks a BITE internal limit;
- * `severity: 'advisory'` means it is likely to fail on QuickMart's side.
+ * save. `severity: 'violation'` means the answer breaks a BITE internal limit;
+ * `severity: 'advisory'` means it is likely to fail somewhere else — on the
+ * customer's side, or at an approval step. `category` names which.
  */
 
 export type GuardrailSeverity = 'violation' | 'advisory';
@@ -24,11 +25,14 @@ export type GuardrailWarning = {
    */
   vars?: Record<string, string>;
   fieldKeys: string[];
+  /** The badge the student sees, e.g. "QuickMart criteria". */
+  category?: string;
 };
 
 type GuardrailCheck = (value: AnswerValue) => GuardrailWarning | null;
 
 const g = BITE_SALES_GUARDRAILS;
+const offer = BITE_HR_OFFER_POLICY;
 
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null;
@@ -155,6 +159,74 @@ const CHECKS: Record<string, GuardrailCheck> = {
       )}.`,
       vars: { max: yen(300), value: yen(retail) },
       fieldKeys: ['retail_price_yen'],
+    };
+  },
+
+  // --- HR: BITE offer policy ------------------------------------------------
+
+  'offer-band-ceiling': (value) => {
+    const base = num(value.proposed_base_salary_yen);
+    if (base === null || base <= offer.bandMaxYen) return null;
+    return {
+      key: 'offer-band-ceiling',
+      severity: 'violation',
+      category: 'Outside BITE offer policy',
+      title: 'Base salary is above the band',
+      message: `This condition is outside BITE’s current offer policy. The band for this role tops out at ${yen(
+        offer.bandMaxYen,
+      )}; you have proposed ${yen(base)}.`,
+      vars: { max: yen(offer.bandMaxYen), value: yen(base) },
+      fieldKeys: ['proposed_base_salary_yen'],
+    };
+  },
+
+  'offer-band-floor': (value) => {
+    const base = num(value.proposed_base_salary_yen);
+    if (base === null || base >= offer.bandMinYen) return null;
+    return {
+      key: 'offer-band-floor',
+      severity: 'violation',
+      category: 'Outside BITE offer policy',
+      title: 'Base salary is below the band',
+      message: `This condition is outside BITE’s current offer policy. The band for this role starts at ${yen(
+        offer.bandMinYen,
+      )}; you have proposed ${yen(base)}.`,
+      vars: { min: yen(offer.bandMinYen), value: yen(base) },
+      fieldKeys: ['proposed_base_salary_yen'],
+    };
+  },
+
+  'sign-on-cap': (value) => {
+    const bonus = num(value.sign_on_bonus_yen);
+    if (bonus === null || bonus <= offer.signOnCapYen) return null;
+    return {
+      key: 'sign-on-cap',
+      severity: 'violation',
+      category: 'Outside BITE offer policy',
+      title: 'Sign-on bonus exceeds the cap',
+      message: `BITE can offer a sign-on bonus of at most ${yen(
+        offer.signOnCapYen,
+      )}. You have proposed ${yen(bonus)}.`,
+      vars: { max: yen(offer.signOnCapYen), value: yen(bonus) },
+      fieldKeys: ['sign_on_bonus_yen'],
+    };
+  },
+
+  'above-midpoint-justification': (value) => {
+    const base = num(value.proposed_base_salary_yen);
+    const justification =
+      typeof value.offer_justification === 'string' ? value.offer_justification.trim() : '';
+    if (base === null || base <= offer.bandMidYen || justification.length > 0) return null;
+    return {
+      key: 'above-midpoint-justification',
+      severity: 'advisory',
+      category: 'Needs approval',
+      title: 'Above the midpoint without a justification',
+      message: `Offers above the ${yen(
+        offer.bandMidYen,
+      )} midpoint go to the HR director with a written, job-related justification. You have not written one yet.`,
+      vars: { mid: yen(offer.bandMidYen) },
+      fieldKeys: ['proposed_base_salary_yen', 'offer_justification'],
     };
   },
 };

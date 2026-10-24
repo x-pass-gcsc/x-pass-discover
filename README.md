@@ -12,8 +12,9 @@ The final report keeps **LIKE** (what you enjoyed, self-reported) and **SKILL
 FIT** (what the work itself showed) as two separate things. They are never
 merged into one "career fit score".
 
-This build is the **common platform plus the Sales vertical slice**:
-*BITE Protein Drink × QuickMart*, playable end to end.
+This build is the **common platform plus two scenarios**, both playable end to
+end: Sales (*BITE Protein Drink × QuickMart*) and HR (*Talent Acquisition for
+BITE Protein Drink × CN Expansion*).
 
 ---
 
@@ -45,6 +46,18 @@ Final Negotiation → Final Submission`
 
 with the exact scenario data, economics, buyer facts, guardrails and disclosure
 rules from the implementation pack.
+
+**HR scenario** — all eleven steps, playable, on the same engine:
+
+`HR Training → Onboarding (capability gaps) → Intake Preparation →
+Hiring Manager Intake → Job-related Criteria → Candidate Interviews (three
+separate AI interviews) → Scorecards → Recommendation v1 → Unexpected Event
+(COO pressure) → Executive Sign-off → Final Hiring Recommendation`
+
+The implementation pack does not specify HR, so its content — candidates,
+hidden facts, the offer band — was authored from the department brief and is
+marked `TODO` in `src/content/hr/` for review. The candidate portraits are
+monogram placeholders (`public/img/avatar/*.svg`) until photography exists.
 
 **Also included**
 
@@ -99,7 +112,15 @@ scenario is **data**: steps, tasks, field definitions, unlock rules, completion
 rules. Adding Marketing or HR means writing another definition like
 `src/content/sales/scenario.ts`, not changing the engine.
 
-That claim is load-bearing, so the HR requirements were designed for up front:
+That claim is load-bearing, so the HR requirements were designed for up front,
+and HR was then written against them. Writing it exposed four places where Sales
+had leaked into the engine; each moved into content rather than gaining a
+department branch: the AI's public scenario context (`aiContext` on the
+scenario), the conversation mode and guardrail steering (`conversationMode` /
+`steeringTaskKeys` on the task), the mock adapter's lines (`mock` on the
+persona), and the advisory badge text (`category` on a guardrail warning).
+One database rule surfaced too: resource and persona keys are unique across
+*all* scenarios, so content shared between departments needs its own key.
 
 | HR requirement | How it is already supported |
 |---|---|
@@ -206,6 +227,10 @@ src/
       scenario.ts         the 10-step Sales scenario, as data
       resources.ts        Data Room contents
       personas.server.ts  SERVER-ONLY: Yuki Tanaka, hidden facts, system prompts
+    hr/
+      scenario.ts         the 11-step HR scenario, as data
+      resources.ts        Data Room: brief, capability inventory, JD draft, résumés, offer policy
+      personas.server.ts  SERVER-ONLY: hiring manager, three candidates, COO, TA manager
   services/
     scenario/
       engine.ts           pure unlock / completion / prefill evaluation
@@ -530,8 +555,9 @@ obviously on-topic question still counts as discovery.
   extraction or rating pipeline. The report shows `NE` rather than a number.
 - **Post-survey.** Table exists, no UI.
 - **Admin is read-only.** Inspection, not authoring.
-- **Four of five scenarios.** Marketing, PM, Strategy and HR are modelled as
-  departments and projects but have no scenario content authored.
+- **Three of five scenarios.** Marketing, PM and Strategy are modelled as
+  departments and projects but have no scenario content authored. HR is
+  authored, but without a pack behind it — see §1.
 - **Object storage adapter.** `resources.file_url` exists; everything is
   currently inline markdown or table data.
 - **Art assets.** The office is generated geometry — deliberately, so a new room
@@ -603,10 +629,9 @@ in the `xpass-locale` cookie, and defaults to the browser's language.
    already surfaced one dead end (a meeting that could be ended before it was
    held, sealing the step). But automation only finds what it is told to look
    at. Nobody has yet sat down and tried to do the job.
-2. **Implement HR as the second scenario.** It is the stress test that matters:
-   conditional content, multiple candidate personas, repeated scorecard rows,
-   several interview transcripts, and an executive pressure event. Writing it
-   should be *content only*. If it is not, that is the bug to fix.
+2. **Have someone who hires for a living review the HR content.** The scenario
+   runs end to end, but its candidates, facts and offer band were authored
+   without a pack.
 3. **Replace the auth placeholder with Auth.js** and give admin real roles.
 4. **Prototype evidence extraction**: work output + behavior → evidence →
    rubric dimension → BARS → rating or `NE` → confidence → deterministic

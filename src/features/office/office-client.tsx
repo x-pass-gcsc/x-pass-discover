@@ -137,6 +137,9 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
   function resolveStep(personaKey: string, fallback: string | null): string | null {
     const current = viewRef.current;
     if (!current) return fallback;
+    // The office is shared by every department, so an NPC may belong to a
+    // scenario this session is not running.
+    if (!current.personas.some((p) => p.key === personaKey)) return null;
     const matching = current.steps.filter((step) =>
       step.tasks.some((task) => task.personaKey === personaKey),
     );
@@ -167,6 +170,15 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
 
     if (!current) {
       setOverlay(noSessionMessage());
+      return;
+    }
+
+    if (!current.personas.some((p) => p.key === npc.personaKey)) {
+      setOverlay({
+        kind: 'message',
+        title: npc.name,
+        body: t('office.notInBootcamp', { name: npc.name }),
+      });
       return;
     }
 
@@ -203,7 +215,12 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
         step.unlocked &&
         step.status !== 'completed',
     );
-    const personaKey = meetingStep?.tasks.find((t) => t.personaKey)?.personaKey;
+    // A step can hold several conversations (three interviews, say): open the
+    // first one that is still to be had.
+    const personaTasks = meetingStep?.tasks.filter((t) => t.personaKey) ?? [];
+    const personaKey = (
+      personaTasks.find((t) => t.status !== 'complete') ?? personaTasks[0]
+    )?.personaKey;
     if (!meetingStep || !personaKey) {
       setOverlay({
         kind: 'message',

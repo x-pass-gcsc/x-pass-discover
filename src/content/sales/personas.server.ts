@@ -22,6 +22,29 @@ const QUICKMART_BUYER: PersonaDefinition = {
   officeZoneKey: 'meeting-room-a',
   stepKeys: ['buyer-meeting', 'negotiation'],
   contextPolicy: { includeStudentWork: false },
+  modeInstructions: {
+    meeting: 'This is the first discovery meeting. You are evaluating, not committing.',
+    negotiation: `This is the FINAL NEGOTIATION. You may trade across wholesale price, quantity, store count, promotion, sampling, data sharing, return terms, reorder criteria and payment terms. You want a workable deal, but you will not accept a structure that looks unprofitable or high-risk for QuickMart just because the representative asks. You still do not know BITE's internal cost floor.`,
+  },
+  mock: {
+    style: 'counterpart',
+    replies: [
+      'What are you basing that on? I need something stronger than a product claim before I give up a facing.',
+      'I hear the product story. What I do not hear yet is what happens to my shelf if it does not sell.',
+      'Help me understand the risk side. If this underperforms in week two, what happens?',
+      'How is that different from what I already carry? FitDrink is cheaper and BodyGo has the same protein.',
+      'That is a feature. Turn it into something that shows up in my category numbers.',
+    ],
+    negotiationReplies: [
+      'That is closer. But price is not the only thing I am weighing — what are you doing about the sell-through risk?',
+      'I can move on store count if you can move on something else. What are you willing to trade?',
+      'If I take on the shelf risk, I need you to take on some of the inventory risk. What can you offer there?',
+      'I am not going to decide on price alone. Show me what the first four weeks look like and how we measure it.',
+      'Give me the specific terms. Region, stores, quantity, price, and what happens if it misses.',
+    ],
+    steeringReply:
+      'I am happy to keep talking, but I am not treating anything as agreed until the terms are concrete.',
+  },
   visibleContext:
     'Yuki Tanaka is responsible for the profitability of QuickMart\'s entire beverage shelf — not for any single supplier. Shelf space is finite, so adding BITE likely means removing something else.',
   openingMessage:
@@ -234,6 +257,15 @@ const BITE_SALES_MANAGER: PersonaDefinition = {
   officeZoneKey: 'sales-zone',
   stepKeys: ['onboarding', 'account-research', 'meeting-prep', 'proposal-v1', 'unexpected-event'],
   contextPolicy: { includeStudentWork: true },
+  mock: {
+    style: 'coach',
+    replies: [
+      'Good question — but that is the one you need to answer, not me. What does the account data already tell you?',
+      'Before you decide that, ask yourself what QuickMart is actually trying to fix. The deal design follows from that.',
+      'Check the guardrails before you commit to anything on price. If you go under the floor, we are not in business.',
+      'Remember: a closed deal that loses money is worse than a lost pitch. What does the contribution look like in your structure?',
+    ],
+  },
   visibleContext:
     'Your manager on the BITE Distribution Sales team. She assigns the mission and will explain BITE constraints, but she expects you to work the account yourself.',
   openingMessage:
