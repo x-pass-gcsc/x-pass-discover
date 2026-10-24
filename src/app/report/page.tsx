@@ -1,3 +1,4 @@
+import { likeForDepartment } from '@/content/pre-survey';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
@@ -31,8 +32,7 @@ export default async function ReportPage() {
   );
 
   const rows = DEPARTMENTS.map((department) => {
-    const raw = preSurvey?.answers?.[`interest_${department.slug}`];
-    const like = typeof raw === 'number' ? Math.round((raw / 5) * 100) : null;
+    const like = likeForDepartment(preSurvey?.answers, department.slug);
     return { department, like, completed: completedSlugs.has(department.slug) };
   });
 
