@@ -159,6 +159,8 @@ export const ja: Messages = {
   'office.todaysTasks': '今日のタスク',
   'office.done': '（完了）',
   'office.minimap': 'オフィスのミニマップ',
+  'office.zoomIn': 'ズームイン',
+  'office.zoomOut': 'ズームアウト',
   'office.you': 'あなた',
   'office.talk': '話す',
 

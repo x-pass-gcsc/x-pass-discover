@@ -17,7 +17,7 @@ import {
 } from './map';
 import { drawPerson, drawSignIcon, shade, type Look, type SignIcon, type View } from './art';
 import { PALETTE } from './theme';
-import type { OfficeBridge } from './bridge';
+import type { OfficeBridge, OfficeCommand } from './bridge';
 import { ENGLISH_LABELS, type OfficeLabels } from './labels';
 
 const PLAYER_SPEED = 215;
@@ -27,6 +27,23 @@ const PLAYER_SIZE = 22;
 
 const PICTURE_KEY = 'office-picture';
 const PICTURE_URL = '/img/office/floor.webp';
+
+/**
+ * The player's sprite sheet (scripts/build-player-sprite.py): one row per
+ * direction, columns standing / step A / step B, feet 2px above the bottom.
+ */
+const PLAYER_SHEET_KEY = 'player-sheet';
+const PLAYER_SHEET_URL = '/img/office/player.png';
+const FRAME_W = 86;
+const FRAME_H = 142;
+const SHEET_ROWS: Record<'down' | 'right' | 'left' | 'up', number> = { down: 0, right: 1, left: 2, up: 3 };
+const PLAYER_SPRITE_SCALE = 0.46;
+/** Steps per second while walking. */
+const STEP_RATE = 6;
+
+/** Each zoom step multiplies or divides the zoom by this. */
+const ZOOM_STEP = 1.25;
+const MAX_ZOOM = 2.4;
 
 /** People are baked at 2× and shown scaled down. */
 const PERSON_RES = 2;
@@ -99,6 +116,9 @@ export class OfficeScene extends Phaser.Scene {
   private walkPhase = 0;
   private wasMoving = false;
   private lastReportedTile = { x: -1, y: -1 };
+  /** True when the player's sprite sheet loaded; false draws the player instead. */
+  private sprite = false;
+  private zoom = CAMERA_ZOOM;
 
   private labels: OfficeLabels;
 
@@ -118,8 +138,12 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // A failed load leaves no texture behind, and create() draws a plan instead.
+    // A failed load leaves no texture behind, and create() draws instead.
     this.load.image(PICTURE_KEY, PICTURE_URL);
+    this.load.spritesheet(PLAYER_SHEET_KEY, PLAYER_SHEET_URL, {
+      frameWidth: FRAME_W,
+      frameHeight: FRAME_H,
+    });
   }
 
   create(): void {
@@ -158,6 +182,10 @@ export class OfficeScene extends Phaser.Scene {
       this.cursors = keyboard.createCursorKeys();
       this.keys = keyboard.addKeys('W,A,S,D') as NonNullable<typeof this.keys>;
       keyboard.on('keydown-E', () => this.handleInteract());
+      keyboard.on('keydown', (event: KeyboardEvent) => {
+        if (event.key === '+' || event.key === '=') this.zoomBy(1);
+        if (event.key === '-' || event.key === '_') this.zoomBy(-1);
+      });
       // Arrow keys would otherwise scroll the page behind the canvas.
       keyboard.addCapture(['UP', 'DOWN', 'LEFT', 'RIGHT', 'SPACE']);
     }
@@ -167,11 +195,44 @@ export class OfficeScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncAvatar, this);
     this.syncAvatar();
 
+    // Zoom: the mouse wheel, the +/- keys, or the buttons React draws.
+    this.input.on(
+      Phaser.Input.Events.POINTER_WHEEL,
+      (_pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number) => {
+        if (dy !== 0) this.zoomBy(dy > 0 ? -1 : 1);
+      },
+    );
+    const offCommand = this.bridge.onCommand((command: OfficeCommand) => {
+      if (command.type === 'zoom') this.zoomBy(command.step);
+    });
+    const onResize = () => this.zoomBy(0);
+    this.scale.on(Phaser.Scale.Events.RESIZE, onResize);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      offCommand();
+      this.scale.off(Phaser.Scale.Events.RESIZE, onResize);
+    });
+
     this.cameras.main.startFollow(this.avatar, true, 0.1, 0.1);
     this.cameras.main.setDeadzone(120, 80);
     this.cameras.main.fadeIn(420, 29, 36, 51);
 
     this.bridge.emit({ type: 'ready' });
+  }
+
+  // -------------------------------------------------------------------- zoom
+
+  /** The furthest out the camera goes: the whole floor fits the view. */
+  private minZoom(): number {
+    const { width, height } = this.scale.gameSize;
+    return Math.min(width / WORLD_WIDTH, height / WORLD_HEIGHT);
+  }
+
+  /** One step in (+1) or out (-1); 0 just re-clamps after a resize. */
+  private zoomBy(step: 1 | -1 | 0): void {
+    const next = Phaser.Math.Clamp(this.zoom * ZOOM_STEP ** step, this.minZoom(), MAX_ZOOM);
+    if (next === this.zoom && step !== 0) return;
+    this.zoom = next;
+    this.cameras.main.zoomTo(next, 180, Phaser.Math.Easing.Sine.Out, true);
   }
 
   // -------------------------------------------------------------- floor plan
@@ -455,7 +516,13 @@ export class OfficeScene extends Phaser.Scene {
     });
 
     this.avatar = this.add.container(0, 0);
-    this.avatarBody = this.personImage(this.personTexture('player', this.playerLook(), 'down', 0));
+    this.sprite = this.textures.exists(PLAYER_SHEET_KEY);
+    this.avatarBody = this.sprite
+      ? this.add
+          .image(0, 0, PLAYER_SHEET_KEY, this.sheetFrame('down', 0))
+          .setOrigin(0.5, (FRAME_H - 2) / FRAME_H)
+          .setScale(PLAYER_SPRITE_SCALE)
+      : this.personImage(this.personTexture('player', this.playerLook(), 'down', 0));
 
     const label = this.add
       .text(0, 6, this.labels.you, {
@@ -469,6 +536,11 @@ export class OfficeScene extends Phaser.Scene {
       .setResolution(2);
 
     this.avatar.add([this.avatarBody, label]);
+  }
+
+  /** Frame index in the sheet: column 0 stands, 1 and 2 are the two steps. */
+  private sheetFrame(direction: Direction, column: number): number {
+    return SHEET_ROWS[direction] * 3 + column;
   }
 
   private playerLook(): Look {
@@ -590,13 +662,18 @@ export class OfficeScene extends Phaser.Scene {
     const facing: Direction | null =
       up && !down ? 'up' : down && !up ? 'down' : left && !right ? 'left' : right && !left ? 'right' : null;
     const moving = length > 0;
-    if (moving) this.walkPhase += delta * 0.009;
+    if (moving) this.walkPhase += (delta / 1000) * (this.sprite ? STEP_RATE : 9);
     else this.walkPhase = 0;
 
     if ((facing && facing !== this.facing) || moving || this.wasMoving) {
       if (facing) this.facing = facing;
-      const frame = moving ? Math.floor(this.walkPhase) % 4 : 0;
-      this.avatarBody.setTexture(this.personTexture('player', this.playerLook(), this.facing, frame));
+      if (this.sprite) {
+        const column = moving ? 1 + (Math.floor(this.walkPhase) % 2) : 0;
+        this.avatarBody.setFrame(this.sheetFrame(this.facing, column));
+      } else {
+        const frame = moving ? Math.floor(this.walkPhase) % 4 : 0;
+        this.avatarBody.setTexture(this.personTexture('player', this.playerLook(), this.facing, frame));
+      }
     }
     this.wasMoving = moving;
   }
@@ -610,7 +687,7 @@ export class OfficeScene extends Phaser.Scene {
     this.glow.setPosition(x, y);
 
     if (this.keycap.visible && !this.nearbyNpc) {
-      this.keycap.setPosition(x, y - 66);
+      this.keycap.setPosition(x, y - (this.sprite ? 80 : 66));
     }
   }
 

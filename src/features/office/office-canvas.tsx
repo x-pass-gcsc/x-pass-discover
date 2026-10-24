@@ -75,7 +75,13 @@ export function OfficeCanvas({ bridge, labels }: { bridge: OfficeBridge; labels:
 
     void boot();
 
+    // The wheel zooms the office, so it must not also scroll the page.
+    const container = containerRef.current;
+    const stopScroll = (event: WheelEvent) => event.preventDefault();
+    container?.addEventListener('wheel', stopScroll, { passive: false });
+
     return () => {
+      container?.removeEventListener('wheel', stopScroll);
       cancelled = true;
       game?.destroy(true);
       game = null;
