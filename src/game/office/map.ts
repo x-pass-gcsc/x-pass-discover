@@ -38,10 +38,10 @@ export type OfficeCorridor = { x: number; y: number; w: number; h: number };
 /**
  * Furniture.
  *
- * Props are placed in tile space and rendered procedurally — the office needs
- * no art assets. `solid: true` adds a collision body, which is why
- * `npm run verify:office` re-checks that every room and NPC is still reachable
- * after furniture moves.
+ * Props are placed in tile space and rendered procedurally on top of the
+ * painted floor, which shows only walls and wall decor. `solid: true` adds a
+ * collision body, which is why `npm run verify:office` re-checks that every
+ * room and NPC is still reachable after furniture moves.
  */
 export type OfficePropKind =
   | 'desk'

@@ -16,13 +16,29 @@ import {
   type OfficeProp,
   type OfficeRoom,
 } from './map';
-import { PALETTE } from './theme';
+import { ILLUSTRATED, PALETTE, type FurnitureTones } from './theme';
 import type { OfficeBridge } from './bridge';
 
 const PLAYER_SPEED = 215;
 const NPC_INTERACT_RADIUS = 60;
 const CAMERA_ZOOM = 1.15;
 const WALL_HEIGHT = 8;
+const FLOOR_TEXTURE = 'office-floor';
+const FLOOR_URL = '/img/office/floor.webp';
+
+/**
+ * Props the painted floor already shows — wall boards, screens, server racks,
+ * potted plants and the reception counter. Over the art they are not drawn, but
+ * a solid one keeps its collision body, so the counter still stops the player
+ * and the floor plan `verify:office` checks is unchanged.
+ */
+const PAINTED_KINDS: ReadonlySet<OfficeProp['kind']> = new Set([
+  'board',
+  'screen',
+  'server',
+  'plant',
+  'counter',
+]);
 
 type WallRun = { px: number; py: number; width: number };
 
@@ -33,9 +49,11 @@ type WallRun = { px: number; py: number; width: number };
  * It holds no business state: every meaningful interaction is emitted to React
  * through the bridge.
  *
- * Everything is drawn procedurally from `map.ts` — floors, walls with a faked
- * height, furniture and characters — so the office needs no art pipeline and a
- * new room is a data change, not an asset request.
+ * The floor, walls and wall decor come from one painted image generated
+ * against the tile grid (`public/img/office/floor.webp`); furniture and
+ * characters are drawn on top from `map.ts`. If the image fails to load, the
+ * whole office is drawn procedurally instead, so it never depends on the art.
+ * Collision always comes from `map.ts`, never from the picture.
  */
 export class OfficeScene extends Phaser.Scene {
   private bridge: OfficeBridge;
@@ -51,6 +69,9 @@ export class OfficeScene extends Phaser.Scene {
   private promptBubble!: Phaser.GameObjects.Container;
   private facing: 'up' | 'down' | 'left' | 'right' = 'down';
   private lastReportedTile = { x: -1, y: -1 };
+  /** True once the painted floor loaded; false falls back to drawing it. */
+  private illustrated = false;
+  private tones: FurnitureTones = PALETTE;
 
   constructor(bridge: OfficeBridge) {
     super('office');
@@ -87,23 +108,42 @@ export class OfficeScene extends Phaser.Scene {
     this.add.image(0, 0, key).setOrigin(0, 0).setDepth(depth);
   }
 
+  preload(): void {
+    // A failed load leaves no texture behind, and create() falls back to
+    // drawing the floor itself.
+    this.load.image(FLOOR_TEXTURE, FLOOR_URL);
+  }
+
   create(): void {
+    this.illustrated = this.textures.exists(FLOOR_TEXTURE);
+    this.tones = this.illustrated ? ILLUSTRATED : PALETTE;
+    const voidColor = this.illustrated ? ILLUSTRATED.void : PALETTE.void;
+
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-    this.cameras.main.setBackgroundColor(PALETTE.void);
+    this.cameras.main.setBackgroundColor(voidColor);
     this.cameras.main.setZoom(CAMERA_ZOOM);
     this.cameras.main.setRoundPixels(true);
 
-    // Floor, wall shadows, furniture and walls are all static and nothing
-    // dynamic is drawn between them, so they bake into ONE image instead of
-    // four full-world layers composited every frame.
     const wallRuns = this.computeWallRuns();
-    this.bake('office-static', 0, (g) => {
-      this.paintFloors(g);
-      this.paintWallShadows(g, wallRuns);
-      this.paintProps(g);
-      this.paintWalls(g, wallRuns);
-    });
+    if (this.illustrated) {
+      this.add
+        .image(0, 0, FLOOR_TEXTURE)
+        .setOrigin(0, 0)
+        .setDisplaySize(WORLD_WIDTH, WORLD_HEIGHT)
+        .setDepth(0);
+      this.bake('office-static', 1, (g) => this.paintProps(g));
+    } else {
+      // Floor, wall shadows, furniture and walls are all static and nothing
+      // dynamic is drawn between them, so they bake into ONE image instead of
+      // four full-world layers composited every frame.
+      this.bake('office-static', 0, (g) => {
+        this.paintFloors(g);
+        this.paintWallShadows(g, wallRuns);
+        this.paintProps(g);
+        this.paintWalls(g, wallRuns);
+      });
+    }
 
     const obstacles = this.createPropBodies();
     const walls = this.createWallBodies(wallRuns);
@@ -126,7 +166,8 @@ export class OfficeScene extends Phaser.Scene {
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setDeadzone(120, 90);
-    this.cameras.main.fadeIn(420, 238, 241, 247);
+    const fade = Phaser.Display.Color.IntegerToColor(voidColor);
+    this.cameras.main.fadeIn(420, fade.red, fade.green, fade.blue);
 
     this.bridge.emit({ type: 'ready' });
   }
@@ -268,16 +309,18 @@ export class OfficeScene extends Phaser.Scene {
 
   private paintProps(g: Phaser.GameObjects.Graphics): void {
     for (const prop of PROPS) {
+      if (this.illustrated && PAINTED_KINDS.has(prop.kind)) continue;
       const w = (prop.w ?? 1) * TILE;
       const h = (prop.h ?? 1) * TILE;
       const x = prop.x * TILE;
       const y = prop.y * TILE;
 
       if (prop.solid) {
-        g.fillStyle(PALETTE.propShadow, 0.42);
+        g.fillStyle(this.tones.propShadow, this.illustrated ? 0.35 : 0.42);
         g.fillRoundedRect(x + 3, y + 5, w - 2, h - 2, 6);
       }
       this.drawProp(g, prop, x, y, w, h);
+      if (this.illustrated) this.inkProp(g, prop, x, y, w, h);
     }
   }
 
@@ -311,55 +354,56 @@ export class OfficeScene extends Phaser.Scene {
     h: number,
   ): void {
     const inset = 3;
+    const tones = this.tones;
     switch (prop.kind) {
       case 'rug': {
-        g.fillStyle(prop.accent ?? PALETTE.rug, 0.07);
+        g.fillStyle(prop.accent ?? tones.rug, 0.07);
         g.fillRoundedRect(x + 4, y + 4, w - 8, h - 8, 10);
-        g.lineStyle(1, prop.accent ?? PALETTE.rug, 0.16);
+        g.lineStyle(1, prop.accent ?? tones.rug, 0.16);
         g.strokeRoundedRect(x + 4, y + 4, w - 8, h - 8, 10);
         break;
       }
 
       case 'desk': {
-        g.fillStyle(PALETTE.deskEdge, 1);
+        g.fillStyle(tones.deskEdge, 1);
         g.fillRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2, 5);
-        g.lineStyle(1, PALETTE.deskEdge, 1);
+        g.lineStyle(1, tones.deskEdge, 1);
         g.strokeRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2, 5);
-        g.fillStyle(prop.accent ?? PALETTE.deskTop, 1);
+        g.fillStyle(prop.accent ?? tones.deskTop, 1);
         g.fillRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2 - 4, 5);
         if (prop.monitor) {
           const mx = x + w / 2 - 9;
           const my = y + inset + 4;
-          g.fillStyle(PALETTE.monitor, 1);
+          g.fillStyle(tones.monitor, 1);
           g.fillRoundedRect(mx, my, 18, 12, 2);
-          g.fillStyle(PALETTE.monitorGlow, 0.55);
+          g.fillStyle(tones.monitorGlow, 0.55);
           g.fillRoundedRect(mx + 2, my + 2, 14, 8, 1);
         }
         break;
       }
 
       case 'table': {
-        g.fillStyle(PALETTE.deskEdge, 1);
+        g.fillStyle(tones.deskEdge, 1);
         g.fillRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2, 10);
-        g.fillStyle(PALETTE.tableTop, 1);
+        g.fillStyle(tones.tableTop, 1);
         g.fillRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2 - 5, 10);
         break;
       }
 
       case 'counter': {
-        g.fillStyle(PALETTE.deskEdge, 1);
+        g.fillStyle(tones.deskEdge, 1);
         g.fillRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2, 6);
-        g.fillStyle(PALETTE.counterTop, 1);
+        g.fillStyle(tones.counterTop, 1);
         g.fillRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2 - 5, 6);
-        g.lineStyle(1, PALETTE.wallEdge, 0.5);
+        g.lineStyle(1, tones.wallEdge, 0.5);
         g.strokeRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2 - 5, 6);
         break;
       }
 
       case 'shelf': {
-        g.fillStyle(PALETTE.shelfBody, 1);
+        g.fillStyle(tones.shelfBody, 1);
         g.fillRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2, 3);
-        g.lineStyle(2, PALETTE.shelfLine, 0.75);
+        g.lineStyle(2, tones.shelfLine, 0.75);
         for (let i = 1; i <= 3; i += 1) {
           const ly = y + inset + ((h - inset * 2) / 4) * i;
           g.lineBetween(x + inset + 3, ly, x + w - inset - 3, ly);
@@ -368,33 +412,41 @@ export class OfficeScene extends Phaser.Scene {
       }
 
       case 'server': {
-        g.fillStyle(PALETTE.serverBody, 1);
+        g.fillStyle(tones.serverBody, 1);
         g.fillRoundedRect(x + 6, y + 3, w - 12, h - 6, 3);
         for (let i = 0; i < 4; i += 1) {
-          g.fillStyle(PALETTE.serverLed, i % 2 === 0 ? 0.9 : 0.4);
+          g.fillStyle(tones.serverLed, i % 2 === 0 ? 0.9 : 0.4);
           g.fillRect(x + 9, y + 8 + i * 5, 4, 2);
         }
         break;
       }
 
       case 'sofa': {
-        g.fillStyle(PALETTE.sofaBody, 1);
+        g.fillStyle(tones.sofaBody, 1);
         g.fillRoundedRect(x + inset, y + inset + 4, w - inset * 2, h - inset * 2 - 4, 7);
-        g.fillStyle(PALETTE.sofaBody, 0.72);
+        g.fillStyle(tones.sofaBody, 0.72);
         g.fillRoundedRect(x + inset, y + inset, w - inset * 2, 10, 5);
         break;
       }
 
       case 'chair': {
-        g.fillStyle(PALETTE.chairBody, 1);
+        if (this.illustrated) {
+          // Backrest behind a seat, so it reads as an office chair at a desk.
+          g.fillStyle(tones.chairBody, 1);
+          g.fillRoundedRect(x + 8, y + 5, w - 16, 9, 4);
+          g.fillStyle(Phaser.Display.Color.ValueToColor(tones.chairBody).lighten(12).color, 1);
+          g.fillRoundedRect(x + 9, y + 12, w - 18, 12, 4);
+          break;
+        }
+        g.fillStyle(tones.chairBody, 1);
         g.fillRoundedRect(x + 9, y + 9, w - 18, h - 18, 5);
         break;
       }
 
       case 'plant': {
-        g.fillStyle(PALETTE.plantPot, 1);
+        g.fillStyle(tones.plantPot, 1);
         g.fillRoundedRect(x + 11, y + 19, 10, 9, 2);
-        g.fillStyle(PALETTE.plantLeaf, 1);
+        g.fillStyle(tones.plantLeaf, 1);
         g.fillCircle(x + 16, y + 13, 7);
         g.fillCircle(x + 11, y + 17, 5);
         g.fillCircle(x + 21, y + 17, 5);
@@ -402,9 +454,9 @@ export class OfficeScene extends Phaser.Scene {
       }
 
       case 'board': {
-        g.fillStyle(PALETTE.boardBody, 1);
+        g.fillStyle(tones.boardBody, 1);
         g.fillRoundedRect(x + 4, y + 6, w - 8, h - 14, 3);
-        g.lineStyle(1, PALETTE.boardInk, 0.55);
+        g.lineStyle(1, tones.boardInk, 0.55);
         for (let i = 1; i <= 3; i += 1) {
           const ly = y + 6 + ((h - 14) / 4) * i;
           g.lineBetween(x + 8, ly, x + w - 8 - (i % 2 === 0 ? 10 : 0), ly);
@@ -413,9 +465,9 @@ export class OfficeScene extends Phaser.Scene {
       }
 
       case 'screen': {
-        g.fillStyle(PALETTE.monitor, 1);
+        g.fillStyle(tones.monitor, 1);
         g.fillRoundedRect(x + 5, y + 6, w - 10, h - 14, 3);
-        g.fillStyle(PALETTE.screenGlow, 0.35);
+        g.fillStyle(tones.screenGlow, 0.35);
         g.fillRoundedRect(x + 8, y + 9, w - 16, h - 20, 2);
         break;
       }
@@ -425,9 +477,92 @@ export class OfficeScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * The painted floor is inked: every object has a dark outline and a lit top
+   * edge. Furniture drawn over it gets the same two strokes, which is most of
+   * what stops it looking pasted on.
+   */
+  private inkProp(
+    g: Phaser.GameObjects.Graphics,
+    prop: OfficeProp,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ): void {
+    const inset = 3;
+    const radius: Partial<Record<OfficeProp['kind'], number>> = {
+      desk: 5,
+      table: 10,
+      shelf: 3,
+      sofa: 7,
+    };
+    const r = radius[prop.kind];
+    if (r === undefined) return;
+
+    g.lineStyle(1.5, ILLUSTRATED.propShadow, 0.85);
+    g.strokeRoundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2, r);
+    g.lineStyle(1, ILLUSTRATED.wallEdge, 0.45);
+    g.lineBetween(x + inset + r, y + inset + 1.5, x + w - inset - r, y + inset + 1.5);
+
+    if (prop.kind === 'desk' && prop.monitor) {
+      // A keyboard in front of the monitor.
+      g.fillStyle(ILLUSTRATED.boardBody, 0.75);
+      g.fillRoundedRect(x + w / 2 - 7, y + h - 13, 14, 3, 1);
+    }
+  }
+
   // ------------------------------------------------------------------ labels
 
   private drawRoomLabels(): void {
+    if (!this.illustrated) {
+      this.drawPlainRoomLabels();
+      return;
+    }
+
+    // Over the painted floor, each room gets a dark sign plate with a lit edge,
+    // hung on the room's back wall like the signage in the concept art.
+    for (const room of ROOMS) {
+      const x = room.x * TILE + 10;
+      const y = room.y * TILE + 6;
+      const sign = this.add.container(x, y).setDepth(5);
+
+      const accent = this.add.circle(9, 10, 3.5, room.color, 1);
+      const title = this.add.text(18, 3, room.name.toUpperCase(), {
+        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+        fontSize: '10px',
+        color: ILLUSTRATED.signInk,
+        fontStyle: 'bold',
+      });
+      title.setLetterSpacing(1.2);
+
+      const parts: Phaser.GameObjects.GameObject[] = [accent, title];
+      let width = 18 + title.width + 10;
+      let height = 20;
+      if (room.action.kind !== 'info') {
+        const hint = this.add.text(18, 17, `▸ ${room.action.label}`, {
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          fontSize: '9px',
+          color: ILLUSTRATED.signHint,
+        });
+        parts.push(hint);
+        width = Math.max(width, 18 + hint.width + 10);
+        height = 32;
+      }
+
+      const plate = this.add.graphics();
+      plate.fillStyle(0x000000, 0.35);
+      plate.fillRoundedRect(2, 3, width, height, 5);
+      plate.fillStyle(ILLUSTRATED.signPlate, 0.92);
+      plate.fillRoundedRect(0, 0, width, height, 5);
+      plate.lineStyle(1, ILLUSTRATED.signEdge, 0.55);
+      plate.strokeRoundedRect(0.5, 0.5, width - 1, height - 1, 5);
+
+      sign.add([plate, ...parts]);
+    }
+  }
+
+  private drawPlainRoomLabels(): void {
     for (const room of ROOMS) {
       const x = room.x * TILE + 9;
       const y = room.y * TILE + 7;

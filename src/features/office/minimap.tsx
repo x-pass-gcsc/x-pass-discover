@@ -9,6 +9,7 @@ import {
 } from '@/game/office/map';
 
 const SCALE = 5;
+const FLOOR_URL = '/img/office/floor.webp';
 
 const hex = (value: number) => `#${value.toString(16).padStart(6, '0')}`;
 
@@ -19,6 +20,9 @@ const hex = (value: number) => `#${value.toString(16).padStart(6, '0')}`;
  * second Phaser camera: UI belongs on the React side of the bridge, it stays
  * crisp at any DPI, and it costs the game loop nothing. Phaser only reports the
  * player's tile.
+ *
+ * The painted floor sits underneath as a thumbnail; the room shapes are drawn
+ * on top as outlines, so the map still reads if the image fails to load.
  */
 export function Minimap({
   player,
@@ -37,18 +41,32 @@ export function Minimap({
       role="img"
       aria-label="Office minimap"
     >
-      <rect width={width} height={height} rx={6} fill="#f1f4f9" />
+      <defs>
+        <clipPath id="minimap-clip">
+          <rect width={width} height={height} rx={6} />
+        </clipPath>
+      </defs>
 
-      {CORRIDORS.map((corridor, index) => (
-        <rect
-          key={`c${index}`}
-          x={corridor.x * SCALE}
-          y={corridor.y * SCALE}
-          width={corridor.w * SCALE}
-          height={corridor.h * SCALE}
-          fill="#ffffff"
+      <g clipPath="url(#minimap-clip)">
+        <rect width={width} height={height} fill="#1b2232" />
+        {CORRIDORS.map((corridor, index) => (
+          <rect
+            key={`c${index}`}
+            x={corridor.x * SCALE}
+            y={corridor.y * SCALE}
+            width={corridor.w * SCALE}
+            height={corridor.h * SCALE}
+            fill="#4b5263"
+          />
+        ))}
+        <image
+          href={FLOOR_URL}
+          width={width}
+          height={height}
+          preserveAspectRatio="none"
         />
-      ))}
+        <rect width={width} height={height} fill="#0b0f18" fillOpacity={0.18} />
+      </g>
 
       {ROOMS.map((room) => {
         const isActive = room.key === activeRoomKey;
@@ -60,9 +78,10 @@ export function Minimap({
               width={room.w * SCALE}
               height={room.h * SCALE}
               rx={2}
-              fill={hex(room.color)}
-              fillOpacity={1}
-              stroke={isActive ? '#2563eb' : '#c3cbda'}
+              fill={isActive ? hex(room.color) : 'none'}
+              fillOpacity={0.35}
+              stroke={isActive ? '#fcd38d' : '#ffffff'}
+              strokeOpacity={isActive ? 1 : 0.18}
               strokeWidth={isActive ? 1.5 : 0.6}
             />
             {room.action.kind !== 'info' ? (
@@ -70,8 +89,8 @@ export function Minimap({
                 cx={(room.x + room.w / 2) * SCALE}
                 cy={(room.y + room.h / 2) * SCALE}
                 r={1.6}
-                fill="#60a5fa"
-                fillOpacity={0.9}
+                fill="#fcd38d"
+                fillOpacity={0.95}
               />
             ) : null}
           </g>

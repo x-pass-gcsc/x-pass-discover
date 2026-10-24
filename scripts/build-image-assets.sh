@@ -45,7 +45,7 @@ cd "$(dirname "$0")/.."
 
 SRC=assets-src
 OUT=public/img
-mkdir -p "$OUT"/{cover,account,product,avatar,scene}
+mkdir -p "$OUT"/{cover,account,product,avatar,scene,office}
 
 # derive <source> <output> <crop|-> <width|WxH>
 derive() {
@@ -79,6 +79,14 @@ echo "scene"
 # Dusk, printed charts, no readable text: dark enough to carry white type, so
 # it backs the decision-revision band rather than sitting in the cover row.
 derive chat/strategy-desk.webp   scene/decision-desk.webp '-'               1600x
+
+echo "office"
+# The 2D office floor. Generated against the tile grid in
+# src/game/office/map.ts (46x30 tiles of 32px), so it is resized to exactly
+# 1472x960 and every room, corridor and doorway lands on its tile. Regenerate
+# it if the map's geometry changes. The only mark in frame is the abstract "//"
+# logo in Reception and the Executive Room; no wordmark.
+derive office/office-floor.webp  office/floor.webp        '-'               '1472x960!'
 
 echo "account / product"
 derive chat/quickmart-dusk.webp  account/quickmart.webp   '-'               1200x
