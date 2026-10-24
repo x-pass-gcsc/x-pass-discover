@@ -89,3 +89,21 @@ export const BITE_SALES_GUARDRAILS = {
   maxPaymentTermDays: 45,
   minProductionRunUnits: 2400,
 } as const;
+
+/**
+ * BITE offer policy for the HR scenario's role. Known to the student (it is in
+ * the Data Room), not to the candidates.
+ *
+ * TODO: the implementation pack does not specify an HR scenario, so these
+ * figures were authored for it. They are internally consistent with the
+ * candidates in `content/hr`, and the single place to change them once real
+ * numbers exist.
+ */
+export const BITE_HR_OFFER_POLICY = {
+  roleTitle: 'Manager, China Business Development',
+  bandMinYen: 8_500_000,
+  /** Offers above this go to the HR director with a written justification. */
+  bandMidYen: 9_500_000,
+  bandMaxYen: 10_500_000,
+  signOnCapYen: 1_000_000,
+} as const;

@@ -2,6 +2,8 @@ import type { ResourceDefinition } from '@/types/resource';
 import type { ScenarioVersionDefinition } from '@/types/scenario';
 import { SALES_SCENARIO } from './sales/scenario';
 import { SALES_RESOURCES } from './sales/resources';
+import { HR_SCENARIO } from './hr/scenario';
+import { HR_RESOURCES } from './hr/resources';
 
 /**
  * Public scenario content registry (client-safe).
@@ -13,10 +15,11 @@ import { SALES_RESOURCES } from './sales/resources';
  * a new version never mutates a session that is already running.
  */
 
-const SCENARIOS: ScenarioVersionDefinition[] = [SALES_SCENARIO];
+const SCENARIOS: ScenarioVersionDefinition[] = [SALES_SCENARIO, HR_SCENARIO];
 
 const RESOURCES_BY_SCENARIO: Record<string, ResourceDefinition[]> = {
   'sales-quickmart': SALES_RESOURCES,
+  'hr-cn-expansion': HR_RESOURCES,
 };
 
 export function listScenarios(): ScenarioVersionDefinition[] {

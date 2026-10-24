@@ -2,6 +2,7 @@ import 'server-only';
 import type { PersonaDefinition } from '@/types/persona';
 import type { PublicPersona } from '@/types/ai';
 import { SALES_PERSONAS } from './sales/personas.server';
+import { HR_PERSONAS } from './hr/personas.server';
 
 /**
  * SERVER-ONLY persona registry.
@@ -13,6 +14,7 @@ import { SALES_PERSONAS } from './sales/personas.server';
 
 const PERSONAS_BY_SCENARIO: Record<string, PersonaDefinition[]> = {
   'sales-quickmart': SALES_PERSONAS,
+  'hr-cn-expansion': HR_PERSONAS,
 };
 
 export function listPersonas(scenarioKey: string): PersonaDefinition[] {

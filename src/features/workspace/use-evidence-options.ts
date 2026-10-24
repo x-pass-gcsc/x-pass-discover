@@ -67,7 +67,7 @@ export function useEvidenceOptions(
                 value: `message:${m.id}`,
                 label:
                   m.content.length > 90 ? `${m.content.slice(0, 90)}…` : m.content,
-                group: 'What the buyer said',
+                group: source.label ?? 'From the conversation',
               })),
           );
         } catch {

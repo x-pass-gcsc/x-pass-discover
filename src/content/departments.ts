@@ -91,8 +91,8 @@ export const DEPARTMENTS: DepartmentDefinition[] = [
     officeZoneKey: 'hr-zone',
     accentColor: '#ea580c',
     coverImage: '/img/cover/hr.webp',
-    status: 'coming_soon',
-    scenarioKey: null,
+    status: 'playable',
+    scenarioKey: 'hr-cn-expansion',
   },
 ];
 

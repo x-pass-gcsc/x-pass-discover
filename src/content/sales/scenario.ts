@@ -1,5 +1,5 @@
 import type { ScenarioVersionDefinition, TaskField } from '@/types/scenario';
-import { BITE_UNIT_ECONOMICS } from '@/content/company';
+import { BITE_PROTEIN_DRINK, BITE_UNIT_ECONOMICS } from '@/content/company';
 import { MEDIA } from '@/content/media';
 
 /**
@@ -23,6 +23,15 @@ const DECISION_AFFECTED_OPTIONS = [
 ];
 
 const e = BITE_UNIT_ECONOMICS;
+const p = BITE_PROTEIN_DRINK.attributes;
+
+/** What every persona in this scenario is told. All of it is in the Data Room. */
+const AI_CONTEXT = [
+  `Product: ${BITE_PROTEIN_DRINK.name} — ${p.size}, ${p.protein} protein, ${p.calories}, refrigerated, ${p.shelfLifeDays}-day shelf life, flavors ${p.flavors.join(' and ')}.`,
+  `Recommended retail price ¥${p.recommendedRetailPriceYen}; standard QuickMart wholesale ¥${p.standardWholesalePriceYen}; pack size ${p.packSize}.`,
+  `BITE is a casual F&B brand. The product has low brand awareness in Japan and limited initial production capacity.`,
+  `Competing products on the shelf: FitDrink (300 ml / 15 g, retail ¥278), BodyGo (350 ml / 20 g, retail ¥328), Morning Plus (250 ml / 10 g, retail ¥248).`,
+].join('\n');
 
 /** Reference panels. Numbers come from the economics constants, never retyped. */
 const PRODUCT_REFERENCE = {
@@ -200,6 +209,7 @@ export const SALES_SCENARIO: ScenarioVersionDefinition = {
     'Get BITE Protein Drink listed at QuickMart under commercially viable conditions.',
   finalOutputTitle: 'QuickMart Final Sales Proposal',
   deadlineHours: 24,
+  aiContext: AI_CONTEXT,
   steps: [
     // ---------------------------------------------------------------- STEP 0A
     {
@@ -526,6 +536,7 @@ export const SALES_SCENARIO: ScenarioVersionDefinition = {
           kind: 'ai_conversation',
           required: true,
           personaKey: 'quickmart-buyer',
+          conversationMode: 'meeting',
           referenceTaskKeys: ['buyer-questions', 'account-analysis-memo'],
           completion: {
             type: 'conversation_ended',
@@ -623,6 +634,7 @@ export const SALES_SCENARIO: ScenarioVersionDefinition = {
                   kind: 'conversation',
                   personaKey: 'quickmart-buyer',
                   stepKey: 'buyer-meeting',
+                  label: 'What the buyer said',
                 },
               ],
             },
@@ -773,6 +785,8 @@ export const SALES_SCENARIO: ScenarioVersionDefinition = {
           kind: 'ai_conversation',
           required: true,
           personaKey: 'quickmart-buyer',
+          conversationMode: 'negotiation',
+          steeringTaskKeys: ['final-agreed-package', 'proposal-v1'],
           referenceTaskKeys: ['proposal-v2-revision'],
           completion: {
             type: 'conversation_ended',
