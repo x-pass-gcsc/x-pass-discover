@@ -1,26 +1,16 @@
 /**
  * Office palette — warm 2.5D.
  *
- * The office is drawn procedurally, so the whole look lives in these values.
+ * The office floor is a painted picture; these values colour what is drawn
+ * over it (people, signs, prompts) and the furniture pieces in `art.ts`.
  * Light falls from the upper left: of an object's two visible sides, the
  * south face (lower left on screen) is a step darker than its top and the east
  * face (lower right) two steps darker. `art.ts` derives those shades, so each
  * entry here is the colour of a lit top surface.
  */
-export type FloorMaterial = 'wood' | 'carpet' | 'stone' | 'tile' | 'walnut';
-
-export const FLOORS: Record<FloorMaterial, { base: number; alt: number; seam: number }> = {
-  wood: { base: 0xd9b48a, alt: 0xd1aa7f, seam: 0xb98e62 },
-  walnut: { base: 0xb58560, alt: 0xab7b57, seam: 0x8d6243 },
-  carpet: { base: 0xcfd3d8, alt: 0xc7cbd1, seam: 0xb7bcc4 },
-  stone: { base: 0xeceae6, alt: 0xe3e0db, seam: 0xcfcac2 },
-  tile: { base: 0xdfe4ea, alt: 0xd6dce3, seam: 0xbfc7d1 },
-};
-
 export const PALETTE = {
   void: 0x1d2433,
 
-  corridor: 'wood' as FloorMaterial,
   threshold: 0x3b82f6,
 
   backWall: 0xeee8de,
