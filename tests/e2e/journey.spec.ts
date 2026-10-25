@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   completePreSurvey,
   openStep,
+  openWorkWindow,
   signUp,
   startBootcamp,
   stepButton,
@@ -112,9 +113,10 @@ test.describe('the student journey', () => {
     const card = page.locator('[data-department-slug="sales"]');
     await expect(card.getByRole('button', { name: 'Resume bootcamp' })).toBeVisible();
     await card.getByRole('button', { name: 'Resume bootcamp' }).click();
-    await page.waitForURL('**/workspace/**');
+    await page.waitForURL(/\/office\?session=/);
 
     expect(page.url()).toContain(sessionId);
+    await openWorkWindow(page);
     await expect(stepButton(page, stepKeys[0])).toHaveAttribute(
       'data-step-status',
       'completed',

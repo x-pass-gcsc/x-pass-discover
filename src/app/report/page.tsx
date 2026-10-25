@@ -180,7 +180,7 @@ export default async function ReportPage() {
                   {sessions.map((session) => (
                     <li key={session.id} className="flex items-center justify-between gap-3">
                       <Link
-                        href={`/workspace/${session.id}`}
+                        href={`/office?session=${session.id}`}
                         className="text-xs text-strong underline-offset-4 transition-colors hover:text-strong hover:underline"
                       >
                         {DEPARTMENTS.find((d) => d.slug === session.departmentSlug)?.name ??

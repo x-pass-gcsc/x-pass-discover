@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { RuntimeBadges } from '@/components/branding';
 import { Badge, Button, Card, CardHeader } from '@/components/ui';
 import { Cover } from '@/components/media';
 import { ResourcePanel } from '@/features/resources/resource-panel';
+import { questFor } from '@/features/game/progress';
+import { NPCS } from '@/game/office/map';
 import { useT } from '@/i18n/client';
+import type { MessageKey } from '@/i18n/messages/en';
 import { startStep } from '@/lib/client-api';
 import type { SessionView, StepView } from '@/types/session-view';
 import { EventCard } from './event-card';
@@ -24,27 +27,30 @@ const STEP_STATUS_TONE = {
 /**
  * The work/data layer.
  *
- * Everything the student actually produces lives here in normal React. The
- * Phaser office is a separate experience layer that links into this view — it
- * never holds business state.
+ * Everything the student actually produces lives here in normal React. It is
+ * shown as the work window inside the office (see `office-client.tsx`), which
+ * owns the session view so the office HUD sees every save as it lands. The
+ * Phaser office never holds business state.
  */
-export function WorkspaceClient({ initialView }: { initialView: SessionView }) {
+export function WorkspaceClient({
+  view,
+  onViewChange,
+  activeStepKey,
+  onActiveStepChange,
+  scrollContainer,
+  onReturnToOffice,
+}: {
+  view: SessionView;
+  onViewChange: (next: SessionView) => void;
+  activeStepKey: string;
+  onActiveStepChange: (stepKey: string) => void;
+  /** The element the work window scrolls in. */
+  scrollContainer?: RefObject<HTMLElement | null>;
+  /** Closes the work window, for a next step that is picked up elsewhere. */
+  onReturnToOffice?: () => void;
+}) {
   const t = useT();
-  const [view, setView] = useState<SessionView>(initialView);
-  // A fresh server render (switching language refreshes the page) replaces the
-  // local copy: same session and progress, re-worded.
-  const [renderedView, setRenderedView] = useState(initialView);
-  if (initialView !== renderedView) {
-    setRenderedView(initialView);
-    setView(initialView);
-  }
-  const [activeStepKey, setActiveStepKey] = useState<string>(
-    () =>
-      initialView.session.currentStepKey ??
-      initialView.steps.find((s) => s.unlocked)?.key ??
-      initialView.steps[0]?.key ??
-      '',
-  );
+  const setActiveStepKey = onActiveStepChange;
 
   const activeStep = useMemo(
     () => view.steps.find((s) => s.key === activeStepKey) ?? view.steps[0],
@@ -68,9 +74,9 @@ export function WorkspaceClient({ initialView }: { initialView: SessionView }) {
       if (before?.status !== 'completed' && after?.status === 'completed') {
         setScrollToNext(true);
       }
-      setView(next);
+      onViewChange(next);
     },
-    [view.steps, activeStepKey],
+    [view.steps, activeStepKey, onViewChange],
   );
 
   useEffect(() => {
@@ -79,10 +85,13 @@ export function WorkspaceClient({ initialView }: { initialView: SessionView }) {
     nextStepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [scrollToNext]);
 
-  const goToStep = useCallback((stepKey: string) => {
-    setActiveStepKey(stepKey);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  const goToStep = useCallback(
+    (stepKey: string) => {
+      setActiveStepKey(stepKey);
+      (scrollContainer?.current ?? window).scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [setActiveStepKey, scrollContainer],
+  );
 
   const isComplete = view.session.status === 'completed';
   const activeIndex = view.steps.findIndex((s) => s.key === activeStep?.key);
@@ -95,7 +104,7 @@ export function WorkspaceClient({ initialView }: { initialView: SessionView }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[272px_minmax(0,1fr)_356px]">
       {/* Left: progress + step timeline */}
-      <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+      <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
         <Card>
           <Cover
             src={view.department.coverImage}
@@ -152,12 +161,6 @@ export function WorkspaceClient({ initialView }: { initialView: SessionView }) {
             aiModeDowngraded={view.runtime.aiModeDowngraded}
           />
           <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[11px]">
-            <Link
-              href={`/office?session=${view.session.id}`}
-              className="flex items-center gap-1.5 text-muted transition-colors hover:text-strong"
-            >
-              <span aria-hidden>🏢</span> {t('workspace.enterOffice')}
-            </Link>
             <Link
               href={`/admin/events?session=${view.session.id}`}
               className="flex items-center gap-1.5 text-muted transition-colors hover:text-strong"
@@ -242,7 +245,12 @@ export function WorkspaceClient({ initialView }: { initialView: SessionView }) {
 
             {activeStep.status === 'completed' && nextStep ? (
               <div ref={nextStepRef}>
-                <NextStepCard step={nextStep} onGo={() => goToStep(nextStep.key)} />
+                <NextStepCard
+                  view={view}
+                  step={nextStep}
+                  onGo={() => goToStep(nextStep.key)}
+                  onReturnToOffice={onReturnToOffice}
+                />
               </div>
             ) : null}
           </>
@@ -250,7 +258,7 @@ export function WorkspaceClient({ initialView }: { initialView: SessionView }) {
       </section>
 
       {/* Right: reference material and the Data Room */}
-      <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+      <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
         {activeStep.media && activeStep.unlocked ? (
           <ReferencePanel media={activeStep.media} />
         ) : null}
@@ -265,8 +273,32 @@ export function WorkspaceClient({ initialView }: { initialView: SessionView }) {
   );
 }
 
-function NextStepCard({ step, onGo }: { step: StepView; onGo: () => void }) {
+function NextStepCard({
+  view,
+  step,
+  onGo,
+  onReturnToOffice,
+}: {
+  view: SessionView;
+  step: StepView;
+  onGo: () => void;
+  onReturnToOffice?: () => void;
+}) {
   const t = useT();
+  // A next step handed over by a senior, or set in another room, is picked up
+  // by walking there; one at the desk can just carry on here.
+  const quest = step.unlocked ? questFor(view, step) : null;
+  const elsewhere =
+    quest && (quest.target.kind === 'npc' || quest.target.roomKey !== 'my-desk') ? quest : null;
+  const where = elsewhere
+    ? elsewhere.target.kind === 'npc'
+      ? t('game.nextQuestFrom', {
+          name: NPCS.find((npc) => npc.key === elsewhere.npcKey)?.name ?? '',
+        })
+      : t('game.nextQuestOffice', {
+          place: t(`office.room.${elsewhere.target.roomKey}` as MessageKey),
+        })
+    : '';
   return (
     <Card
       className="animate-pop border-accent-400/40 bg-accent-500/5 px-5 py-4"
@@ -279,15 +311,28 @@ function NextStepCard({ step, onGo }: { step: StepView; onGo: () => void }) {
           </Badge>
           <p className="mt-2 text-sm text-strong">
             {step.unlocked
-              ? t('workspace.nextStepPrompt', { title: step.title })
+              ? t('workspace.nextStepPrompt', { title: step.title }) +
+                (where ? ` · ${where}` : '')
               : t('workspace.nextStepLocked', {
                   reason: step.lockedReason ?? t('workspace.locked'),
                 })}
           </p>
         </div>
-        <Button onClick={onGo} disabled={!step.unlocked} data-testid="go-next-step">
-          {t('workspace.nextStep')}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {elsewhere && onReturnToOffice ? (
+            <Button onClick={onReturnToOffice} data-testid="walk-to-next">
+              📍 {t('game.walkThere')}
+            </Button>
+          ) : null}
+          <Button
+            onClick={onGo}
+            disabled={!step.unlocked}
+            variant={elsewhere && onReturnToOffice ? 'ghost' : undefined}
+            data-testid="go-next-step"
+          >
+            {t('workspace.nextStep')}
+          </Button>
+        </div>
       </div>
     </Card>
   );

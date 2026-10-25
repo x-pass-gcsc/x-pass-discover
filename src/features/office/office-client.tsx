@@ -1,9 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { Badge, Button, Card, CardHeader, EmptyState } from '@/components/ui';
+import { useToast } from '@/components/toast';
+import { BadgeShelf, NpcDialogue, PlayerHud, QuestTracker, RewardBurst } from '@/features/game/hud';
+import {
+  currentQuest,
+  currentQuestStep,
+  rewardBetween,
+  type Reward,
+} from '@/features/game/progress';
+import { WorkspaceClient } from '@/features/workspace/workspace-client';
 import { Minimap } from './minimap';
 import { ChatPanel } from '@/features/ai/chat-panel';
 import { ResourcePanel } from '@/features/resources/resource-panel';
@@ -11,7 +20,7 @@ import { OfficeBridge, type OfficeEvent } from '@/game/office/bridge';
 import type { OfficeLabels } from '@/game/office/labels';
 import { useT } from '@/i18n/client';
 import type { MessageKey } from '@/i18n/messages/en';
-import type { OfficeNpc } from '@/game/office/map';
+import { NPCS, ROOMS, type OfficeNpc } from '@/game/office/map';
 import { logClientEvent } from '@/lib/client-api';
 import type { SessionView } from '@/types/session-view';
 import { OfficeCanvas } from './office-canvas';
@@ -19,19 +28,37 @@ import { OfficeCanvas } from './office-canvas';
 type Overlay =
   | { kind: 'none' }
   | { kind: 'resources' }
+  | { kind: 'badges' }
   | { kind: 'chat'; personaKey: string; stepKey: string }
   | { kind: 'message'; title: string; body: string }
   | { kind: 'notifications' };
 
+/** A senior handing over a step, shown as a dialogue box over the office. */
+type Dialogue = { npc: OfficeNpc; stepKey: string; again: boolean };
+
 /**
- * The office page.
+ * The office page — the whole game.
  *
- * Phaser reports an interaction; React decides what it means and opens the
- * right work surface. Business state stays on this side of the bridge.
+ * The student walks the office, picks up each step from the senior or the
+ * room it belongs to, and does the work in the work window that opens over the
+ * office, without leaving it. Phaser reports an interaction; React decides
+ * what it means, owns the session view, and draws the HUD (level, quest,
+ * badges, rewards). Business state stays on this side of the bridge.
  */
-export function OfficeClient({ initialView }: { initialView: SessionView | null }) {
-  const router = useRouter();
+export function OfficeClient({
+  initialView,
+  openWork = false,
+  openStepKey = null,
+  playerName,
+}: {
+  initialView: SessionView | null;
+  openWork?: boolean;
+  /** The step to open the work window on, when `openWork`. */
+  openStepKey?: string | null;
+  playerName: string;
+}) {
   const t = useT();
+  const toast = useToast();
   const bridge = useMemo(() => new OfficeBridge(), []);
   const roomName = (key: string) => t(`office.room.${key}` as MessageKey);
   const labels = useMemo<OfficeLabels>(
@@ -63,14 +90,97 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
   const [playerTile, setPlayerTile] = useState<{ x: number; y: number } | null>(null);
   const [booted, setBooted] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>({ kind: 'none' });
+  const [dialogue, setDialogue] = useState<Dialogue | null>(null);
+  const [reward, setReward] = useState<Reward | null>(null);
+  /** The step open in the work window, or null when the window is closed. */
+  const [workStepKey, setWorkStepKey] = useState<string | null>(() =>
+    openWork && initialView
+      ? ((openStepKey && initialView.steps.some((s) => s.key === openStepKey) ? openStepKey : null) ??
+        currentQuestStep(initialView)?.key ??
+        initialView.session.currentStepKey ??
+        initialView.steps[0]?.key ??
+        null)
+      : null,
+  );
+  /** Steps the student has accepted from a senior, so the second visit is shorter. */
+  const accepted = useRef(new Set<string>());
   const viewRef = useRef(view);
   viewRef.current = view;
+
+  const quest = useMemo(() => currentQuest(view), [view]);
+  const questRef = useRef(quest);
+  questRef.current = quest;
+
+  /** Every save comes through here, so the HUD can count what it earned. */
+  const updateView = useCallback((next: SessionView) => {
+    const before = viewRef.current;
+    if (before) {
+      const gained = rewardBetween(before, next);
+      if (gained) setReward(gained);
+    }
+    viewRef.current = next;
+    setView(next);
+  }, []);
+
+  const openWorkWindow = useCallback((stepKey?: string | null) => {
+    const current = viewRef.current;
+    if (!current) {
+      setOverlay(noSessionMessage());
+      return;
+    }
+    setDialogue(null);
+    setWorkStepKey(
+      stepKey ??
+        currentQuestStep(current)?.key ??
+        current.session.currentStepKey ??
+        current.steps[0]?.key ??
+        null,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the quest marker on whatever the next piece of work is. Re-sent on
+  // `ready`, since a command before the scene exists has nowhere to go.
+  const sendMarker = useCallback(() => {
+    const target = questRef.current?.target;
+    bridge.command({
+      type: 'marker',
+      marker: target
+        ? { x: target.x, y: target.y, npcKey: target.kind === 'npc' ? target.npcKey : null }
+        : null,
+    });
+  }, [bridge]);
+  useEffect(() => sendMarker(), [quest, sendMarker]);
+
+  // The address bar remembers an open work window, so a reload or a shared
+  // link comes back to the same step rather than to the lobby.
+  const sessionId = view?.session.id ?? null;
+  useEffect(() => {
+    if (!sessionId) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('session', sessionId);
+    if (workStepKey) {
+      url.searchParams.set('work', '1');
+      url.searchParams.set('step', workStepKey);
+    } else {
+      url.searchParams.delete('work');
+      url.searchParams.delete('step');
+    }
+    if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url);
+  }, [sessionId, workStepKey]);
+
+  // Walking pauses while anything you can type into is open over the office.
+  const paused = workStepKey !== null || dialogue !== null || overlay.kind === 'chat';
+  useEffect(() => {
+    bridge.command({ type: 'controls', enabled: !paused });
+  }, [bridge, paused, booted]);
 
   useEffect(() => {
     const unsubscribe = bridge.subscribe((event: OfficeEvent) => {
       switch (event.type) {
         case 'ready':
           setBooted(true);
+          sendMarker();
           break;
 
         case 'player_moved':
@@ -103,13 +213,13 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
 
         case 'interact_zone': {
           const action = event.room.action;
-          if (action.kind === 'resources') setOverlay({ kind: 'resources' });
+          const target = questRef.current?.target;
+          // The room the next step is set in opens that step, whatever the room.
+          if (target?.kind === 'room' && target.roomKey === event.room.key && action.kind !== 'meeting') {
+            openWorkWindow(questRef.current?.step.key);
+          } else if (action.kind === 'resources') setOverlay({ kind: 'resources' });
           else if (action.kind === 'notifications') setOverlay({ kind: 'notifications' });
-          else if (action.kind === 'workspace') {
-            const session = viewRef.current?.session;
-            if (session) router.push(`/workspace/${session.id}`);
-            else setOverlay(noSessionMessage());
-          }
+          else if (action.kind === 'workspace') openWorkWindow();
           else if (action.kind === 'meeting') openMeeting();
           break;
         }
@@ -120,7 +230,7 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
     });
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridge, router]);
+  }, [bridge]);
 
   function noSessionMessage(): Overlay {
     return {
@@ -179,6 +289,13 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
         title: npc.name,
         body: t('office.notInBootcamp', { name: npc.name }),
       });
+      return;
+    }
+
+    // The senior who hands over the next step says so, and opens it.
+    const q = questRef.current;
+    if (q && q.npcKey === npc.key && !q.isConversation) {
+      setDialogue({ npc, stepKey: q.step.key, again: accepted.current.has(q.step.key) });
       return;
     }
 
@@ -244,7 +361,24 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
           ?.tasks.find((t) => t.personaKey === overlay.personaKey)
       : undefined;
 
-  const currentStep = view?.steps.find((s) => s.key === view.session.currentStepKey);
+  const currentStep = quest?.step ?? view?.steps.find((s) => s.key === view.session.currentStepKey);
+  const questNpc = quest?.npcKey ? NPCS.find((npc) => npc.key === quest.npcKey) : undefined;
+  const questRoomKey =
+    quest?.target.kind === 'room'
+      ? quest.target.roomKey
+      : questNpc
+        ? (ROOMS.find(
+            (room) =>
+              questNpc.x >= room.x &&
+              questNpc.x < room.x + room.w &&
+              questNpc.y >= room.y &&
+              questNpc.y < room.y + room.h,
+          )?.key ?? null)
+        : null;
+  const dialoguePersona = dialogue
+    ? view?.personas.find((p) => p.key === dialogue.npc.personaKey)
+    : undefined;
+  const dialogueStep = dialogue ? view?.steps.find((s) => s.key === dialogue.stepKey) : undefined;
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -263,6 +397,15 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
           />
 
           <div className="pointer-events-none absolute left-4 top-4 flex flex-col items-start gap-2">
+            {view ? (
+              <PlayerHud
+                view={view}
+                playerName={playerName}
+                onBadges={() =>
+                  setOverlay((o) => (o.kind === 'badges' ? { kind: 'none' } : { kind: 'badges' }))
+                }
+              />
+            ) : null}
             <span className="flex items-center gap-2 rounded-lg bg-[#1d2433]/90 px-3 py-1.5 text-[11px] font-semibold text-white shadow-float">
               <span className="size-1.5 rounded-full bg-brand-400" aria-hidden />
               {zoneKey ? roomName(zoneKey) : t('office.corridor')}
@@ -273,9 +416,45 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
             </span>
           </div>
 
-          <MissionBanner view={view} currentStep={currentStep} />
+          <div className="absolute left-1/2 top-4 w-[min(440px,calc(100%-2rem))] -translate-x-1/2 max-xl:top-[150px] lg:max-xl:top-4 lg:max-xl:w-[380px]">
+            <QuestTracker
+              view={view}
+              quest={quest}
+              placeName={questRoomKey ? roomName(questRoomKey) : ''}
+              npcName={quest?.npcKey ? (questNpc?.name ?? null) : null}
+              player={playerTile}
+              onStart={() => openWorkWindow(quest?.step.key)}
+            />
+          </div>
 
           {view && currentStep ? <TodaysTasks step={currentStep} /> : null}
+
+          {dialogue && dialogueStep ? (
+            <NpcDialogue
+              name={dialogue.npc.name}
+              role={t(`office.npc.${dialogue.npc.key}` as MessageKey)}
+              persona={dialoguePersona}
+              line={t(dialogue.again ? 'game.dialogue.again' : 'game.dialogue.handover', {
+                title: dialogueStep.title,
+              })}
+              onAccept={() => {
+                if (!accepted.current.has(dialogue.stepKey)) {
+                  accepted.current.add(dialogue.stepKey);
+                  toast.push({ tone: 'info', title: t('game.questAccepted'), description: dialogueStep.title });
+                }
+                openWorkWindow(dialogue.stepKey);
+              }}
+              onAsk={
+                dialoguePersona
+                  ? () => {
+                      setDialogue(null);
+                      setOverlay({ kind: 'chat', personaKey: dialoguePersona.key, stepKey: dialogue.stepKey });
+                    }
+                  : null
+              }
+              onLater={() => setDialogue(null)}
+            />
+          ) : null}
 
           <div className="absolute bottom-4 right-4 flex w-[190px] flex-col items-end gap-2">
             <div className="flex overflow-hidden rounded-lg bg-[#1d2433]/90 text-white shadow-float">
@@ -299,7 +478,7 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
               </button>
             </div>
             <div className="pointer-events-none w-full rounded-xl bg-[#1d2433]/85 p-2 shadow-float">
-              <Minimap player={playerTile} activeRoomKey={zoneKey} />
+              <Minimap player={playerTile} activeRoomKey={zoneKey} quest={quest?.target ?? null} />
             </div>
           </div>
 
@@ -347,12 +526,13 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
             {t('office.hint.after')}
           </p>
           {view ? (
-            <Link
-              href={`/workspace/${view.session.id}`}
+            <button
+              type="button"
+              onClick={() => openWorkWindow()}
               className="shrink-0 text-[11px] font-medium text-brand-400 underline-offset-4 hover:underline"
             >
               {t('office.openWorkspace')}
-            </Link>
+            </button>
           ) : (
             <Link
               href="/departments"
@@ -421,6 +601,15 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
           </Card>
         ) : null}
 
+        {overlay.kind === 'badges' && view ? (
+          <div className="space-y-2">
+            <OverlayHeader title={t('game.badgesTitle')} onClose={() => setOverlay({ kind: 'none' })} />
+            <Card>
+              <BadgeShelf view={view} />
+            </Card>
+          </div>
+        ) : null}
+
         {overlay.kind === 'resources' && view ? (
           <div className="space-y-2">
             <OverlayHeader title={roomName('data-room')} onClose={() => setOverlay({ kind: 'none' })} />
@@ -449,7 +638,7 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
               stepKey={overlay.stepKey}
               persona={activePersona}
               minStudentMessages={chatTask?.minStudentMessages ?? 0}
-              onSessionUpdate={setView}
+              onSessionUpdate={updateView}
             />
           </div>
         ) : null}
@@ -473,12 +662,16 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
                       <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-body">
                         {step.eventPayload!.body}
                       </p>
-                      <Link
-                        href={`/workspace/${view.session.id}`}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOverlay({ kind: 'none' });
+                          openWorkWindow(step.key);
+                        }}
                         className="mt-4 inline-block text-[11px] text-brand-400 underline-offset-4 hover:underline"
                       >
                         {t('office.respond')}
-                      </Link>
+                      </button>
                     </div>
                   );
                 })()
@@ -498,67 +691,114 @@ export function OfficeClient({ initialView }: { initialView: SessionView | null 
           </div>
         ) : null}
       </aside>
+
+      {view && workStepKey ? (
+        <WorkWindow
+          view={view}
+          onViewChange={updateView}
+          stepKey={workStepKey}
+          onStepChange={setWorkStepKey}
+          onClose={() => setWorkStepKey(null)}
+        />
+      ) : null}
+
+      {reward ? createPortal(<RewardBurst reward={reward} onDone={() => setReward(null)} />, document.body) : null}
     </div>
   );
 }
 
+const noSubscribe = () => () => undefined;
+
 /**
- * The mission plate at the top of the office: which step the student is on,
- * named the way the department would name it. In visitor mode it says so.
+ * The work window: the step's tasks, forms and files, opened over the office
+ * like the screen of the desk computer. Closing it puts the student back where
+ * they were standing.
  */
-function MissionBanner({
+function WorkWindow({
   view,
-  currentStep,
+  onViewChange,
+  stepKey,
+  onStepChange,
+  onClose,
 }: {
-  view: SessionView | null;
-  currentStep: SessionView['steps'][number] | undefined;
+  view: SessionView;
+  onViewChange: (next: SessionView) => void;
+  stepKey: string;
+  onStepChange: (stepKey: string) => void;
+  onClose: () => void;
 }) {
   const t = useT();
-  const departmentName = view ? t(`dept.${view.department.slug}` as MessageKey) : '';
-  const index = view && currentStep ? view.steps.indexOf(currentStep) + 1 : 0;
-  const eyebrow = view
-    ? currentStep
-      ? t('office.mission', { department: departmentName, number: String(index).padStart(2, '0') })
-      : t('office.allComplete', { department: departmentName })
-    : t('office.visitorMode');
-  const title = view
-    ? (currentStep?.title ?? view.scenario.finalOutputTitle)
-    : t('office.explore');
-
-  const body = (
-    <span className="flex items-center gap-3 rounded-xl border border-white/70 bg-surface/95 py-2 pl-2.5 pr-4 shadow-float">
-      <span
-        aria-hidden
-        className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600"
-      >
-        <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
-          <rect x="4" y="3.5" width="12" height="14" rx="2" />
-          <path d="M7.5 3.5V2.5h5v1M7 13v-2M10 13V8.5M13 13v-3.5" strokeLinecap="round" />
-        </svg>
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[10px] font-semibold uppercase tracking-wider text-brand-600">
-          {eyebrow}
-        </span>
-        <span className="block truncate text-sm font-semibold text-strong">{title}</span>
-      </span>
-      {view ? <span aria-hidden className="text-subtle">›</span> : null}
-    </span>
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const step = view.steps.find((s) => s.key === stepKey);
+  const hydrated = useSyncExternalStore(
+    noSubscribe,
+    () => true,
+    () => false,
   );
 
-  return (
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    // The page behind the window stays put while the window scrolls.
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [onClose]);
+
+  // Portalled to <body>: the page's entrance animation leaves a transform on
+  // <main>, which would otherwise make it, not the viewport, the window's frame.
+  // There is no <body> to portal into on the server, so it opens on hydration.
+  if (!hydrated) return null;
+  return createPortal(
     <div
-      className="absolute left-1/2 top-4 max-w-[min(440px,calc(100%-2rem))] -translate-x-1/2 max-md:top-24"
-      data-testid="office-mission"
+      // Under the site header (z-30), so the language and account menus stay usable.
+      className="fixed inset-0 z-20 flex items-stretch justify-center bg-[#0f1729]/55 px-2 pb-2 pt-[72px] backdrop-blur-[3px] sm:px-4 sm:pb-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('game.workWindow')}
+      data-testid="work-window"
     >
-      {view ? (
-        <Link href={`/workspace/${view.session.id}`} className="block">
-          {body}
-        </Link>
-      ) : (
-        <div className="pointer-events-none">{body}</div>
-      )}
-    </div>
+      <div className="flex w-full max-w-[1500px] animate-pop flex-col overflow-hidden rounded-2xl border-[3px] border-[#1d2433] bg-canvas shadow-float">
+        <div className="flex items-center gap-3 bg-[#1d2433] px-4 py-2 text-white">
+          <span aria-hidden className="flex gap-1.5">
+            <span className="size-2.5 rounded-full bg-danger-400" />
+            <span className="size-2.5 rounded-full bg-warn-400" />
+            <span className="size-2.5 rounded-full bg-accent-400" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-xs font-semibold">
+            🖥 {t('game.workWindow')} · {view.department.projectTitle}
+            {step ? <span className="font-normal text-white/60"> — {step.title}</span> : null}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            data-testid="close-work"
+            className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-[11px] font-medium hover:bg-white/20"
+          >
+            {t('game.backToOffice')}
+            <kbd className="rounded border border-white/20 px-1 font-mono text-[9px] text-white/70">
+              {t('game.escHint')}
+            </kbd>
+          </button>
+        </div>
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <WorkspaceClient
+            view={view}
+            onViewChange={onViewChange}
+            activeStepKey={stepKey}
+            onActiveStepChange={onStepChange}
+            scrollContainer={scrollRef}
+            onReturnToOffice={onClose}
+          />
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

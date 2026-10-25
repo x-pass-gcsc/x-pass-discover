@@ -69,6 +69,10 @@ const FEET_OFFSET = 10;
 const DEPTH_GLOW = 1;
 const DEPTH_SIGNS = 5_000;
 const DEPTH_BUBBLES = 6_000;
+const DEPTH_MARKER = 6_500;
+/** How high the quest marker floats above a person's feet, or a room's centre. */
+const MARKER_OVER_NPC = 86;
+const MARKER_OVER_ROOM = 30;
 
 /** The colour of the painted name plates, sampled from the picture. */
 const PAINTED_PLATE = 0x272a31;
@@ -132,6 +136,9 @@ export class OfficeScene extends Phaser.Scene {
   /** True when the player's sprite sheet loaded; false draws the player instead. */
   private sprite = false;
   private zoom = CAMERA_ZOOM;
+  private marker!: Phaser.GameObjects.Container;
+  /** Whose head the marker floats over, if anyone's. */
+  private markerNpc: string | null = null;
 
   private labels: OfficeLabels;
 
@@ -221,8 +228,11 @@ export class OfficeScene extends Phaser.Scene {
         if (dy !== 0) this.zoomBy(dy > 0 ? -1 : 1);
       },
     );
+    this.createMarker();
     const offCommand = this.bridge.onCommand((command: OfficeCommand) => {
       if (command.type === 'zoom') this.zoomBy(command.step);
+      else if (command.type === 'marker') this.placeMarker(command.marker);
+      else if (command.type === 'controls') this.setControls(command.enabled);
     });
     const onResize = () => this.zoomBy(0);
     this.scale.on(Phaser.Scale.Events.RESIZE, onResize);
@@ -236,6 +246,80 @@ export class OfficeScene extends Phaser.Scene {
     this.cameras.main.fadeIn(420, 29, 36, 51);
 
     this.bridge.emit({ type: 'ready' });
+  }
+
+  // ------------------------------------------------------------ quest marker
+
+  /** A gold "!" that bobs over wherever React says the next piece of work is. */
+  private createMarker(): void {
+    const marker = this.add.container(0, 0).setDepth(DEPTH_MARKER).setVisible(false);
+    const halo = this.add.circle(0, 0, 20, 0xfbbf24, 0.28);
+    const disc = this.add.graphics();
+    disc.fillStyle(0x0f1729, 0.25);
+    disc.fillCircle(1, 3, 14);
+    disc.fillStyle(0xf59e0b, 1);
+    disc.fillCircle(0, 0, 14);
+    disc.lineStyle(2.5, 0xffffff, 1);
+    disc.strokeCircle(0, 0, 14);
+    const bang = this.add
+      .text(0, 0, '!', {
+        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+        fontSize: '19px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5)
+      .setResolution(2);
+    const tip = this.add.triangle(0, 18, -6, 0, 6, 0, 0, 8, 0xf59e0b);
+    marker.add([halo, disc, tip, bang]);
+    this.tweens.add({
+      targets: [disc, bang, tip],
+      y: '-=7',
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    this.tweens.add({
+      targets: halo,
+      scale: { from: 0.8, to: 1.5 },
+      alpha: { from: 0.45, to: 0 },
+      duration: 1300,
+      repeat: -1,
+      ease: 'Sine.easeOut',
+    });
+    this.marker = marker;
+  }
+
+  private placeMarker(marker: { x: number; y: number; npcKey: string | null } | null): void {
+    if (!this.marker) return;
+    this.markerNpc = marker?.npcKey ?? null;
+    if (!marker) {
+      this.marker.setVisible(false);
+      return;
+    }
+    // Tiles are continuous here: a person's tile centre, or a room's middle.
+    const lift = marker.npcKey ? MARKER_OVER_NPC - FEET_OFFSET : MARKER_OVER_ROOM;
+    this.marker
+      .setPosition(Math.round(marker.x * TILE), Math.round(marker.y * TILE - lift))
+      .setVisible(true);
+  }
+
+  /** Pauses walking and the E key while a window is open over the office. */
+  private setControls(enabled: boolean): void {
+    const keyboard = this.input.keyboard;
+    if (!keyboard) return;
+    keyboard.enabled = enabled;
+    // The manager is what swallows arrow keys and space; let forms have them.
+    keyboard.manager.enabled = enabled;
+    if (!enabled) {
+      keyboard.resetKeys();
+      this.mover?.body.setVelocity(0, 0);
+      // Nothing moves behind a window, so stop drawing until it closes.
+      this.game.loop.sleep();
+    } else if (!this.game.loop.running) {
+      this.game.loop.wake();
+    }
   }
 
   // -------------------------------------------------------------------- zoom
@@ -759,6 +843,9 @@ export class OfficeScene extends Phaser.Scene {
         ? this.labels.promptTarget(action, target)
         : this.labels.promptZone(action)
       : null;
+
+    // The name bubble takes the marker's place over the person you are next to.
+    if (this.marker && this.markerNpc) this.marker.setVisible(nearest?.key !== this.markerNpc);
 
     if (nearest) {
       this.showSpeech(nearest);

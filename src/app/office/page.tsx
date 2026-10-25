@@ -12,12 +12,12 @@ import type { SessionView } from '@/types/session-view';
 export default async function OfficePage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string }>;
+  searchParams: Promise<{ session?: string; work?: string; step?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
 
-  const { session: requestedSessionId } = await searchParams;
+  const { session: requestedSessionId, work, step } = await searchParams;
   const repo = getRepository();
 
   // Fall back to the student's most recent session so walking into the office
@@ -45,8 +45,8 @@ export default async function OfficePage({
     <AppShell
       title={t('office.title')}
       subtitle={view ? view.department.projectTitle : t('office.visitorMode')}
-      backHref={view ? `/workspace/${view.session.id}` : '/departments'}
-      backLabel={view ? t('office.backWorkspace') : t('office.backDepartments')}
+      backHref="/departments"
+      backLabel={t('office.backDepartments')}
       wide
       right={
         <RuntimeBadges
@@ -57,7 +57,7 @@ export default async function OfficePage({
         />
       }
     >
-      <OfficeClient initialView={view} />
+      <OfficeClient initialView={view} openWork={work === '1'} openStepKey={step ?? null} playerName={user.displayName} />
     </AppShell>
   );
 }

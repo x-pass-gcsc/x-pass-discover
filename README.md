@@ -358,8 +358,14 @@ bootcamp** on Sales → work through the ten steps. Returning students sign in a
 `/login` with email and password. Click your name in the header for **My Page**
 (display name, password set/change, your bootcamps). Sign out from the header
 on any signed-in page.
-Walk into the office from the workspace sidebar, or go straight to
-`/office`.
+Starting or resuming a bootcamp lands in the office (`/office?session=…`):
+the office is the game. The quest tracker names the next step and where it is
+picked up — a senior hands it over, or the room it belongs to (desk, Data
+Room, notice board) opens it — and the work itself happens in the **work
+terminal** window that opens over the office. Old `/workspace/<id>` links land
+in the office with that window open. Finished tasks and steps earn XP, levels
+and badges (`src/features/game/progress.ts`); they count completed work only
+and never reach LIKE, SKILL FIT or the report.
 
 Things worth trying, because they are where the design decisions show:
 
@@ -369,7 +375,7 @@ Things worth trying, because they are where the design decisions show:
 | **Initial Sales Proposal** | Set the wholesale price to ¥150. You get a guardrail warning — and you can still submit it. |
 | **Unexpected Event → Negotiation** | Proposal v1 sits read-only beside the revision form. Nothing is overwritten. |
 | **Day one** | A new account (or a sign-in before the pre-survey is done) opens on `/start`, the X-PASS lobby: INTRO 01/04, **START** begins the pre-survey — one question per screen, keys 1–5 answer, Enter moves on. Questions live in `src/content/pre-survey.ts`: the X-PASS competency inventory, 75 statements (15 per department, one per competency) in English, Japanese and Korean, each tagged with the department and competency it measures. Until a rubric is attached, the report's LIKE for a department is the mean of its 15 answers. After the survey, sign-in goes to the welcome page. |
-| **The office** | WASD/arrows move. Walk into the Data Room (the library) or up to an NPC, press `E`. Switch the language and the room signs change with it. |
+| **The office** | WASD/arrows move. Follow the gold **!** marker (and the compass in the quest tracker) to the next step's senior or room and press `E`; finishing a step pays out XP with a level-up and badges. Switch the language and the room signs change with it. |
 | **`/admin/events`** | The ordered behaviour log for your own session — raw rows, no scores. |
 | **`/admin/ai-personas`** | Disclosure rules and trigger topics are shown; hidden fact content is not, anywhere. |
 

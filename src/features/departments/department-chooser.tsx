@@ -81,7 +81,7 @@ export function DepartmentChooser({
     try {
       const existing = sessionFor(slug);
       if (existing) {
-        router.push(`/workspace/${existing.id}`);
+        router.push(`/office?session=${existing.id}`);
         return;
       }
       const response = await fetch('/api/sessions', {
@@ -91,7 +91,7 @@ export function DepartmentChooser({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? t('chooser.startFailed'));
-      router.push(`/workspace/${data.session.id}`);
+      router.push(`/office?session=${data.session.id}`);
     } catch (cause) {
       toast.push({
         tone: 'danger',
