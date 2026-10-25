@@ -22,9 +22,12 @@ const hex = (value: number) => `#${value.toString(16).padStart(6, '0')}`;
 export function Minimap({
   player,
   activeRoomKey,
+  quest = null,
 }: {
   player: { x: number; y: number } | null;
   activeRoomKey: string | null;
+  /** Where the next piece of work is, in tiles. */
+  quest?: { x: number; y: number } | null;
 }) {
   const t = useT();
   const width = GRID_WIDTH * SCALE;
@@ -89,6 +92,15 @@ export function Minimap({
           strokeWidth={0.8}
         />
       ))}
+
+      {quest ? (
+        <g data-testid="minimap-quest">
+          <circle cx={quest.x * SCALE} cy={quest.y * SCALE} r={6} fill="#f59e0b" fillOpacity={0.35}>
+            <animate attributeName="r" values="5;10;5" dur="1.4s" repeatCount="indefinite" />
+          </circle>
+          <circle cx={quest.x * SCALE} cy={quest.y * SCALE} r={3.6} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.2} />
+        </g>
+      ) : null}
 
       {player ? (
         <g>

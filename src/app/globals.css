@@ -49,6 +49,7 @@
   /* Caution */
   --color-warn-50: #fffbeb;
   --color-warn-100: #fef3c7;
+  --color-warn-300: #fcd34d;
   --color-warn-400: #fbbf24;
   --color-warn-500: #f59e0b;
   --color-warn-600: #d97706;
@@ -82,6 +83,11 @@
 @keyframes slide-in {
   from { opacity: 0; transform: translateX(12px); }
   to   { opacity: 1; transform: none; }
+}
+@keyframes confetti {
+  0%   { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+  70%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 60px)) rotate(var(--rot)); }
 }
 @keyframes dot-pulse {
   0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }

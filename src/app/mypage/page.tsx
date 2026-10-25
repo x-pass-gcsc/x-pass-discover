@@ -117,7 +117,7 @@ export default async function MyPage() {
                       {t(`sessionStatus.${session.status}`)}
                     </Badge>
                     <Link
-                      href={`/workspace/${session.id}`}
+                      href={`/office?session=${session.id}`}
                       className="shrink-0 rounded-lg border border-line px-2.5 py-1.5 text-[11px] text-body transition-colors hover:border-line-strong hover:bg-sunken hover:text-strong"
                     >
                       {t('mypage.bootcamps.open')}

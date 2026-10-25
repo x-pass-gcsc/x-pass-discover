@@ -50,6 +50,8 @@ export function DynamicForm({
   const toast = useToast();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyRef = useRef(false);
+  /** Counts local edits, so a save only clears `dirty` if nothing was typed while it was in flight. */
+  const editsRef = useRef(0);
   const startedRef = useRef(task.status !== 'not_started');
 
   const evidenceOptions = useEvidenceOptions(sessionId, task.fields, resources);
@@ -75,9 +77,12 @@ export function DynamicForm({
       if (timerRef.current) clearTimeout(timerRef.current);
       setSaveState('saving');
       timerRef.current = setTimeout(async () => {
+        const editsAtSave = editsRef.current;
         try {
           await persist(next, 'draft');
-          dirtyRef.current = false;
+          // Edits made while this save was in flight are newer than what the
+          // server echoed back; leave them dirty so the echo cannot erase them.
+          if (editsRef.current === editsAtSave) dirtyRef.current = false;
           setSaveState('saved');
         } catch (cause) {
           setSaveState('error');
@@ -104,6 +109,7 @@ export function DynamicForm({
       });
     }
     dirtyRef.current = true;
+    editsRef.current += 1;
     setValue((prev) => {
       const merged = { ...prev, [key]: next };
       scheduleAutosave(merged);

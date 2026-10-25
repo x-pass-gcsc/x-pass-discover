@@ -130,18 +130,36 @@ export async function completePreSurvey(
   await page.waitForURL('**/departments');
 }
 
+/** The session id an office URL (`/office?session=…`) is open on. */
+export function sessionIdFromUrl(page: Page): string {
+  return new URL(page.url()).searchParams.get('session') ?? '';
+}
+
 /**
- * Starts (or resumes) a department's bootcamp and lands in its workspace.
- * Returns the session id taken from the URL.
+ * Opens the work window over the office from the quest tracker — the same
+ * thing walking to the quest and pressing E does, without the walk.
+ */
+export async function openWorkWindow(page: Page): Promise<void> {
+  const workWindow = page.getByTestId('work-window');
+  if (await workWindow.isVisible()) return;
+  await page.getByTestId('open-work').click();
+  await expect(workWindow).toBeVisible();
+}
+
+/**
+ * Starts (or resumes) a department's bootcamp: it lands in the office, and the
+ * work window is opened so the step rail is on screen. Returns the session id
+ * taken from the URL.
  */
 export async function startBootcamp(page: Page, slug = 'sales'): Promise<string> {
   await page.goto('/departments');
   const card = page.locator(`[data-department-slug="${slug}"]`);
   await expect(card).toHaveAttribute('data-department-status', 'playable');
   await card.getByRole('button', { name: /Start bootcamp|Resume bootcamp/ }).click();
-  await page.waitForURL('**/workspace/**');
-  const sessionId = page.url().split('/workspace/')[1]?.split(/[?#]/)[0] ?? '';
+  await page.waitForURL(/\/office\?session=/);
+  const sessionId = sessionIdFromUrl(page);
   expect(sessionId).not.toBe('');
+  await openWorkWindow(page);
   return sessionId;
 }
 
