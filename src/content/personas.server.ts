@@ -88,6 +88,7 @@ export function toPublicPersona(persona: PersonaDefinition): PublicPersona {
     visibleContext: persona.visibleContext,
     avatarColor: persona.avatarColor,
     portrait: persona.portrait,
+    stepKeys: [...persona.stepKeys],
   };
 }
 

@@ -1,20 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RuntimeBadges } from '@/components/branding';
-import { Badge, Button, Card, CardHeader } from '@/components/ui';
-import { Cover } from '@/components/media';
-import { ResourcePanel } from '@/features/resources/resource-panel';
+import { Badge, Button, Card } from '@/components/ui';
+import { FileIcon } from '@/components/media';
+import { ResourceBodyView } from '@/features/resources/resource-panel';
 import { questFor } from '@/features/game/progress';
 import { NPCS } from '@/game/office/map';
 import { useT } from '@/i18n/client';
 import type { MessageKey } from '@/i18n/messages/en';
-import { startStep } from '@/lib/client-api';
+import { logResourceOpen, startStep } from '@/lib/client-api';
+import type { ResourceDefinition } from '@/types/resource';
 import type { SessionView, StepView } from '@/types/session-view';
 import { EventCard } from './event-card';
 import { ReferencePanel } from './reference-panel';
-import { DeadlineCountdown, ProgressRing, StepRail } from './step-rail';
+import { MentorChat } from './mentor-chat';
+import { ResourceLibrary } from './resource-library';
+import { DeadlineCountdown } from './deadline-countdown';
+import { TodayTasks } from './today-tasks';
 import { TaskCard } from './task-card';
 
 const STEP_STATUS_TONE = {
@@ -37,15 +41,12 @@ export function WorkspaceClient({
   onViewChange,
   activeStepKey,
   onActiveStepChange,
-  scrollContainer,
   onReturnToOffice,
 }: {
   view: SessionView;
   onViewChange: (next: SessionView) => void;
   activeStepKey: string;
   onActiveStepChange: (stepKey: string) => void;
-  /** The element the work window scrolls in. */
-  scrollContainer?: RefObject<HTMLElement | null>;
   /** Closes the work window, for a next step that is picked up elsewhere. */
   onReturnToOffice?: () => void;
 }) {
@@ -85,12 +86,24 @@ export function WorkspaceClient({
     nextStepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [scrollToNext]);
 
+  const centerRef = useRef<HTMLDivElement>(null);
+  const [reading, setReading] = useState<ResourceDefinition | null>(null);
+  const openResource = useCallback(
+    (resource: ResourceDefinition) => {
+      setReading(resource);
+      // Which files a student reads, and when, is evidence; the count is never a score.
+      void logResourceOpen(view.session.id, resource.key, activeStepKey);
+    },
+    [view.session.id, activeStepKey],
+  );
+
   const goToStep = useCallback(
     (stepKey: string) => {
       setActiveStepKey(stepKey);
-      (scrollContainer?.current ?? window).scrollTo({ top: 0, behavior: 'smooth' });
+      setReading(null);
+      centerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     },
-    [setActiveStepKey, scrollContainer],
+    [setActiveStepKey],
   );
 
   const isComplete = view.session.status === 'completed';
@@ -101,174 +114,217 @@ export function WorkspaceClient({
     return <p className="text-sm text-muted">{t('workspace.noSteps')}</p>;
   }
 
+  const stepNumber = String(activeIndex + 1).padStart(2, '0');
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[272px_minmax(0,1fr)_356px]">
-      {/* Left: progress + step timeline */}
-      <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-        <Card>
-          <Cover
-            src={view.department.coverImage}
-            alt=""
-            className="h-24 border-b border-line"
-            overlay={
-              <span className="absolute bottom-2.5 left-3.5">
-                <span
-                  className="rounded-full bg-surface/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider shadow-card"
-                  style={{ color: view.department.accentColor }}
-                >
-                  {view.department.name}
-                </span>
-              </span>
-            }
+    <div className="grid h-full min-h-0 gap-0 max-xl:overflow-y-auto xl:grid-cols-[250px_minmax(0,1fr)_330px]">
+      {/* Left: the file browser */}
+      <aside className="flex min-h-0 flex-col border-line bg-surface max-xl:border-b xl:border-r">
+        <div className="min-h-0 flex-1 max-xl:max-h-[320px]">
+          <ResourceLibrary
+            resources={view.resources}
+            highlightKeys={activeStep.resourceKeys}
+            openKey={reading?.key ?? null}
+            onOpen={openResource}
           />
-          <div className="p-4">
-          <ProgressRing steps={view.steps} />
-
-          <dl className="mt-4 space-y-2 border-t border-line pt-3 text-[11px]">
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted">{t('workspace.role')}</dt>
-              <dd className="truncate text-right text-body" title={view.scenario.studentRole}>
-                {view.scenario.studentRole}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted">{t('workspace.deadline')}</dt>
-              <dd>
-                <DeadlineCountdown deadlineAt={view.session.deadlineAt} />
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted">{t('workspace.scenario')}</dt>
-              <dd className="font-mono text-body">v{view.scenario.version}</dd>
-            </div>
-          </dl>
+        </div>
+        <div className="space-y-2 border-t border-line px-4 py-3 text-[11px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted">{t('workspace.deadline')}</span>
+            <DeadlineCountdown deadlineAt={view.session.deadlineAt} />
           </div>
-        </Card>
-
-        <Card className="p-2">
-          <StepRail
-            steps={view.steps}
-            activeStepKey={activeStep.key}
-            onSelect={goToStep}
-          />
-        </Card>
-
-        <Card className="p-4">
           <RuntimeBadges
             persistenceLabel={view.runtime.persistenceLabel}
             persistenceIsEphemeral={view.runtime.persistenceIsEphemeral}
             aiLabel={view.runtime.aiLabel}
             aiModeDowngraded={view.runtime.aiModeDowngraded}
           />
-          <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[11px]">
-            <Link
-              href={`/admin/events?session=${view.session.id}`}
-              className="flex items-center gap-1.5 text-muted transition-colors hover:text-strong"
-            >
-              <span aria-hidden>📊</span> {t('workspace.inspectEvents')}
-            </Link>
-          </div>
-        </Card>
+          <Link
+            href={`/admin/events?session=${view.session.id}`}
+            className="flex items-center gap-1.5 text-muted transition-colors hover:text-strong"
+          >
+            <span aria-hidden>📊</span> {t('workspace.inspectEvents')}
+          </Link>
+        </div>
       </aside>
 
-      {/* Center: active step */}
-      <section className="min-w-0 space-y-4">
-        {isComplete ? (
-          <Card className="animate-pop border-accent-400/40 bg-accent-500/5 px-5 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <Badge tone="success" dot>
-                  {t('workspace.complete')}
-                </Badge>
-                <p className="mt-2 text-sm text-strong">
-                  {t('workspace.submitted', { title: view.scenario.finalOutputTitle })}
-                </p>
-              </div>
-              <Link
-                href="/report"
-                className="rounded-xl border border-accent-400/40 px-3.5 py-2 text-xs font-medium text-accent-400 transition-colors hover:bg-accent-400/10"
-              >
-                {t('workspace.viewReport')}
-              </Link>
-            </div>
-          </Card>
-        ) : null}
-
-        <Card accent={view.department.accentColor}>
-          <CardHeader
-            title={activeStep.title}
-            subtitle={activeStep.summary ?? undefined}
-            right={
-              <Badge tone={STEP_STATUS_TONE[activeStep.status]} dot>
-                {t(`stepStatus.${activeStep.status}`)}
-              </Badge>
-            }
-          />
-          {activeStep.instructions ? (
-            <p className="px-5 py-4 text-[13px] leading-relaxed text-body">
-              {activeStep.instructions}
-            </p>
+      {/* Center: the step, written up like a document */}
+      <section className="relative flex min-h-0 min-w-0 flex-col bg-surface">
+        <div className="flex flex-wrap items-center gap-2 border-b border-line bg-canvas/60 px-5 py-2 text-[11px] text-muted">
+          <span className="rounded-md border border-line bg-surface px-2 py-0.5 font-medium text-body">
+            {view.department.name}
+          </span>
+          <span className="rounded-md border border-line bg-surface px-2 py-0.5">
+            {t(`stepType.${activeStep.stepType}` as MessageKey)}
+          </span>
+          {activeStep.estimatedMinutes ? (
+            <span className="rounded-md border border-line bg-surface px-2 py-0.5">
+              ⏱ {t('work.minutes', { minutes: String(activeStep.estimatedMinutes) })}
+            </span>
           ) : null}
-        </Card>
+          <span className="ml-auto flex items-center gap-1.5">
+            <span>{t('work.autosave')}</span>
+            <span className="grid size-4 place-items-center rounded-full bg-accent-500 text-[9px] font-bold text-white">
+              ✓
+            </span>
+          </span>
+        </div>
 
-        {!activeStep.unlocked ? (
-          <Card className="px-5 py-10 text-center">
-            <div className="mx-auto mb-3 grid size-10 place-items-center rounded-full bg-sunken text-base">
-              🔒
-            </div>
-            <p className="text-sm text-muted">
-              {activeStep.lockedReason ?? t('workspace.locked')}
-            </p>
-          </Card>
-        ) : (
-          <>
-            {activeStep.eventPayload ? (
-              <EventCard
-                sessionId={view.session.id}
-                stepKey={activeStep.key}
-                payload={activeStep.eventPayload}
-              />
+        <div ref={centerRef} className="work-doc min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8">
+          <div className="mx-auto max-w-[760px] space-y-4">
+            {isComplete ? (
+              <Card className="animate-pop border-accent-400/40 bg-accent-500/5 px-5 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <Badge tone="success" dot>
+                      {t('workspace.complete')}
+                    </Badge>
+                    <p className="mt-2 text-sm text-strong">
+                      {t('workspace.submitted', { title: view.scenario.finalOutputTitle })}
+                    </p>
+                  </div>
+                  <Link
+                    href="/report"
+                    className="rounded-xl border border-accent-400/40 px-3.5 py-2 text-xs font-medium text-accent-400 transition-colors hover:bg-accent-400/10"
+                  >
+                    {t('workspace.viewReport')}
+                  </Link>
+                </div>
+              </Card>
             ) : null}
 
-            {activeStep.tasks.map((task) => (
-              <TaskCard
-                key={task.key}
-                sessionId={view.session.id}
-                step={activeStep}
-                task={task}
-                steps={view.steps}
-                resources={view.resources}
-                personas={view.personas}
-                onSessionUpdate={handleSessionUpdate}
-              />
-            ))}
-
-            {activeStep.status === 'completed' && nextStep ? (
-              <div ref={nextStepRef}>
-                <NextStepCard
-                  view={view}
-                  step={nextStep}
-                  onGo={() => goToStep(nextStep.key)}
-                  onReturnToOffice={onReturnToOffice}
-                />
+            <header className="border-b border-line pb-4">
+              <div className="flex items-start gap-3">
+                <svg aria-hidden viewBox="0 0 24 24" className="mt-1 size-8 shrink-0 text-strong" fill="none" stroke="currentColor" strokeWidth={1.6}>
+                  <path d="M6 2.5h8l5 5V20a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 20V4a1.5 1.5 0 0 1 1-1.5Z" />
+                  <path d="M14 2.5V8h5M8.5 12h7M8.5 15.5h7M8.5 9h3" strokeLinecap="round" />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-2xl font-black tracking-tight text-strong">
+                    <span className="text-brand-600">TASK {stepNumber}</span>
+                    <span className="mx-2 text-subtle">·</span>
+                    {activeStep.title}
+                  </h2>
+                  {activeStep.summary ? (
+                    <p className="mt-1 text-[13px] text-muted">{activeStep.summary}</p>
+                  ) : null}
+                </div>
+                <Badge tone={STEP_STATUS_TONE[activeStep.status]} dot>
+                  {t(`stepStatus.${activeStep.status}`)}
+                </Badge>
               </div>
-            ) : null}
-          </>
-        )}
+              {activeStep.instructions ? (
+                <p className="mt-3 rounded-lg bg-sunken px-4 py-3 text-[13px] leading-relaxed text-body">
+                  {activeStep.instructions}
+                </p>
+              ) : null}
+            </header>
+
+            {!activeStep.unlocked ? (
+              <Card className="px-5 py-10 text-center">
+                <div className="mx-auto mb-3 grid size-10 place-items-center rounded-full bg-sunken text-base">
+                  🔒
+                </div>
+                <p className="text-sm text-muted">
+                  {activeStep.lockedReason ?? t('workspace.locked')}
+                </p>
+              </Card>
+            ) : (
+              <>
+                {activeStep.eventPayload ? (
+                  <EventCard
+                    sessionId={view.session.id}
+                    stepKey={activeStep.key}
+                    payload={activeStep.eventPayload}
+                  />
+                ) : null}
+
+                {activeStep.media ? <ReferencePanel media={activeStep.media} /> : null}
+
+                {activeStep.tasks.map((task) => (
+                  <TaskCard
+                    key={task.key}
+                    sessionId={view.session.id}
+                    step={activeStep}
+                    task={task}
+                    steps={view.steps}
+                    resources={view.resources}
+                    personas={view.personas}
+                    onSessionUpdate={handleSessionUpdate}
+                  />
+                ))}
+
+                {activeStep.status === 'completed' && nextStep ? (
+                  <div ref={nextStepRef}>
+                    <NextStepCard
+                      view={view}
+                      step={nextStep}
+                      onGo={() => goToStep(nextStep.key)}
+                      onReturnToOffice={onReturnToOffice}
+                    />
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+
+        {reading ? (
+          <ResourceReader resource={reading} onClose={() => setReading(null)} />
+        ) : null}
       </section>
 
-      {/* Right: reference material and the Data Room */}
-      <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-        {activeStep.media && activeStep.unlocked ? (
-          <ReferencePanel media={activeStep.media} />
-        ) : null}
-        <ResourcePanel
+      {/* Right: today's work and the senior to ask */}
+      <aside className="min-h-0 space-y-3 border-line bg-canvas/60 p-3 max-xl:border-t xl:overflow-y-auto xl:border-l">
+        <TodayTasks steps={view.steps} activeStepKey={activeStep.key} onSelect={goToStep} />
+        <MentorChat
           sessionId={view.session.id}
-          resources={view.resources}
-          highlightKeys={activeStep.resourceKeys}
-          stepKey={activeStep.key}
+          step={activeStep}
+          personas={view.personas}
+          onSessionUpdate={handleSessionUpdate}
         />
       </aside>
+    </div>
+  );
+}
+
+/** A file from the library, opened over the document like a second window. */
+function ResourceReader({
+  resource,
+  onClose,
+}: {
+  resource: ResourceDefinition;
+  onClose: () => void;
+}) {
+  const t = useT();
+  return (
+    <div
+      className="absolute inset-0 z-10 flex flex-col bg-surface animate-pop"
+      data-testid="resource-reader"
+      data-resource-key={resource.key}
+    >
+      <div className="flex items-center gap-3 border-b border-line bg-[#1d2a4a] px-4 py-2 text-white">
+        <FileIcon format={resource.fileMeta?.format ?? 'DOC'} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold">{resource.title}</span>
+          {resource.fileMeta ? (
+            <span className="block text-[10px] text-white/60">{resource.fileMeta.detail}</span>
+          ) : null}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg bg-white/10 px-3 py-1.5 text-[11px] font-medium hover:bg-white/20"
+        >
+          {t('work.backToTask')}
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-10">
+        <div className="mx-auto max-w-[760px]">
+          <p className="mb-4 text-[13px] text-muted">{resource.description}</p>
+          <ResourceBodyView resource={resource} />
+        </div>
+      </div>
     </div>
   );
 }

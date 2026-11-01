@@ -136,14 +136,20 @@ export function sessionIdFromUrl(page: Page): string {
 }
 
 /**
- * Opens the work window over the office from the quest tracker — the same
- * thing walking to the quest and pressing E does, without the walk.
+ * Opens the work window over the office: through the department's welcome
+ * card on the first day, otherwise from the quest tracker — the same thing
+ * walking to the quest and pressing E does, without the walk.
  */
 export async function openWorkWindow(page: Page): Promise<void> {
   const workWindow = page.getByTestId('work-window');
-  if (await workWindow.isVisible()) return;
-  await page.getByTestId('open-work').click();
-  await expect(workWindow).toBeVisible();
+  const intro = page.getByTestId('department-intro');
+  // The buttons are server-rendered, so retry until hydration wires them up.
+  await expect(async () => {
+    if (await workWindow.isVisible()) return;
+    if (await intro.isVisible()) await page.getByTestId('intro-start').click();
+    else await page.getByTestId('open-work').click();
+    await expect(workWindow).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 /**

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Badge, Button, Card, CardHeader, EmptyState } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -23,6 +23,7 @@ import type { MessageKey } from '@/i18n/messages/en';
 import { NPCS, ROOMS, type OfficeNpc } from '@/game/office/map';
 import { logClientEvent } from '@/lib/client-api';
 import type { SessionView } from '@/types/session-view';
+import { DepartmentIntro } from './department-intro';
 import { OfficeCanvas } from './office-canvas';
 
 type Overlay =
@@ -91,6 +92,10 @@ export function OfficeClient({
   const [booted, setBooted] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>({ kind: 'none' });
   const [dialogue, setDialogue] = useState<Dialogue | null>(null);
+  /** First day in the department: the welcome card, until the student starts. */
+  const [intro, setIntro] = useState(
+    () => !!initialView && initialView.progress.completedSteps === 0 && !openWork,
+  );
   const [reward, setReward] = useState<Reward | null>(null);
   /** The step open in the work window, or null when the window is closed. */
   const [workStepKey, setWorkStepKey] = useState<string | null>(() =>
@@ -170,7 +175,7 @@ export function OfficeClient({
   }, [sessionId, workStepKey]);
 
   // Walking pauses while anything you can type into is open over the office.
-  const paused = workStepKey !== null || dialogue !== null || overlay.kind === 'chat';
+  const paused = workStepKey !== null || dialogue !== null || intro || overlay.kind === 'chat';
   useEffect(() => {
     bridge.command({ type: 'controls', enabled: !paused });
   }, [bridge, paused, booted]);
@@ -428,6 +433,22 @@ export function OfficeClient({
           </div>
 
           {view && currentStep ? <TodaysTasks step={currentStep} /> : null}
+
+          {intro && view ? (
+            <DepartmentIntro
+              view={view}
+              onClose={() => setIntro(false)}
+              onStart={() => {
+                setIntro(false);
+                const first = quest?.step;
+                if (first && !accepted.current.has(first.key)) {
+                  accepted.current.add(first.key);
+                  toast.push({ tone: 'info', title: t('game.questAccepted'), description: first.title });
+                }
+                openWorkWindow(first?.key);
+              }}
+            />
+          ) : null}
 
           {dialogue && dialogueStep ? (
             <NpcDialogue
@@ -728,7 +749,7 @@ function WorkWindow({
   onClose: () => void;
 }) {
   const t = useT();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [maximized, setMaximized] = useState(false);
   const step = view.steps.find((s) => s.key === stepKey);
   const hydrated = useSyncExternalStore(
     noSubscribe,
@@ -757,48 +778,90 @@ function WorkWindow({
   return createPortal(
     <div
       // Under the site header (z-30), so the language and account menus stay usable.
-      className="fixed inset-0 z-20 flex items-stretch justify-center bg-[#0f1729]/55 px-2 pb-2 pt-[72px] backdrop-blur-[3px] sm:px-4 sm:pb-4"
+      className={`fixed inset-0 z-20 flex items-stretch justify-center bg-[#0f1729]/40 backdrop-blur-[2px] ${
+        maximized ? 'px-0 pb-0 pt-[60px]' : 'px-2 pb-2 pt-[72px] sm:px-6 sm:pb-5'
+      }`}
       role="dialog"
       aria-modal="true"
       aria-label={t('game.workWindow')}
       data-testid="work-window"
     >
-      <div className="flex w-full max-w-[1500px] animate-pop flex-col overflow-hidden rounded-2xl border-[3px] border-[#1d2433] bg-canvas shadow-float">
-        <div className="flex items-center gap-3 bg-[#1d2433] px-4 py-2 text-white">
-          <span aria-hidden className="flex gap-1.5">
-            <span className="size-2.5 rounded-full bg-danger-400" />
-            <span className="size-2.5 rounded-full bg-warn-400" />
-            <span className="size-2.5 rounded-full bg-accent-400" />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-xs font-semibold">
-            🖥 {t('game.workWindow')} · {view.department.projectTitle}
-            {step ? <span className="font-normal text-white/60"> — {step.title}</span> : null}
-          </span>
+      <div
+        className={`flex w-full animate-pop flex-col overflow-hidden border-2 border-[#3b6fd8] bg-canvas shadow-[0_0_0_4px_rgba(59,111,216,0.18),0_30px_60px_-20px_rgba(15,23,41,0.6)] ${
+          maximized ? 'rounded-none' : 'max-w-[1480px] rounded-xl'
+        }`}
+      >
+        <div className="flex items-center gap-3 bg-gradient-to-r from-[#13254d] to-[#1d3a78] px-3 py-2 text-white">
           <button
             type="button"
             onClick={onClose}
             data-testid="close-work"
-            className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-[11px] font-medium hover:bg-white/20"
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
           >
-            {t('game.backToOffice')}
-            <kbd className="rounded border border-white/20 px-1 font-mono text-[9px] text-white/70">
+            <span aria-hidden>←</span> {t('game.backToOffice')}
+            <kbd className="rounded border border-white/20 px-1 font-mono text-[9px] font-normal text-white/60">
               {t('game.escHint')}
             </kbd>
           </button>
+          <span className="min-w-0 flex-1 truncate text-sm tracking-wide">
+            <span className="text-white/75">BITE OFFICE OS</span>
+            <span className="mx-2 text-white/40">/</span>
+            <span className="font-bold uppercase">
+              {view.department.slug.replace(/-/g, ' ')} WORKSPACE
+            </span>
+            {step ? <span className="ml-3 hidden text-xs text-white/55 lg:inline">{step.title}</span> : null}
+          </span>
+          <span className="flex shrink-0 items-center gap-1">
+            <WindowButton label={t('game.backToOffice')} onClick={onClose}>
+              <path d="M5 12h10" />
+            </WindowButton>
+            <WindowButton
+              label={maximized ? t('work.restore') : t('work.maximize')}
+              onClick={() => setMaximized((m) => !m)}
+            >
+              <rect x="4.5" y="4.5" width="11" height="11" rx="1" />
+            </WindowButton>
+            <WindowButton label={t('common.close')} onClick={onClose}>
+              <path d="m5.5 5.5 9 9m0-9-9 9" />
+            </WindowButton>
+          </span>
         </div>
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div className="min-h-0 flex-1">
           <WorkspaceClient
             view={view}
             onViewChange={onViewChange}
             activeStepKey={stepKey}
             onActiveStepChange={onStepChange}
-            scrollContainer={scrollRef}
             onReturnToOffice={onClose}
           />
         </div>
       </div>
     </div>,
     document.body,
+  );
+}
+
+function WindowButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="grid size-8 place-items-center rounded-md text-white/85 hover:bg-white/15"
+    >
+      <svg aria-hidden viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+        {children}
+      </svg>
+    </button>
   );
 }
 
