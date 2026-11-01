@@ -9,6 +9,11 @@ export type PublicPersona = {
   visibleContext: string;
   avatarColor: string;
   portrait: string;
+  /**
+   * Steps this persona may be talked to in. Wiring, not content: the server
+   * enforces it anyway, and the UI uses it to offer the right person.
+   */
+  stepKeys: string[];
 };
 
 export type ChatMessageView = {

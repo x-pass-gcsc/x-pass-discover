@@ -9,7 +9,7 @@ import { useT } from '@/i18n/client';
 import { logResourceOpen } from '@/lib/client-api';
 import type { ResourceDefinition } from '@/types/resource';
 
-function ResourceBodyView({ resource }: { resource: ResourceDefinition }) {
+export function ResourceBodyView({ resource }: { resource: ResourceDefinition }) {
   const t = useT();
   const body = resource.body;
 

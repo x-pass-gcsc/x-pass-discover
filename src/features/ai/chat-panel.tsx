@@ -25,6 +25,7 @@ export function ChatPanel({
   minStudentMessages,
   onSessionUpdate,
   readOnly,
+  compact = false,
 }: {
   sessionId: string;
   stepKey: string;
@@ -32,6 +33,8 @@ export function ChatPanel({
   minStudentMessages: number;
   onSessionUpdate: (view: SessionView) => void;
   readOnly?: boolean;
+  /** A small side-panel chat: questions only, no meeting to end. */
+  compact?: boolean;
 }) {
   const [conversation, setConversation] = useState<ConversationView | null>(null);
   const [draft, setDraft] = useState('');
@@ -138,6 +141,78 @@ export function ChatPanel({
   const canEnd = remaining === 0 && !ended;
   const found = conversation?.discoveredFactCount ?? 0;
   const total = conversation?.totalDiscoverableFactCount ?? 0;
+
+  if (compact) {
+    return (
+      <div className="flex h-[290px] flex-col">
+        <div ref={scrollRef} className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
+          {!conversation ? (
+            <div className="flex items-center gap-2 text-xs text-muted">
+              <Spinner /> {t('chat.connecting')}
+            </div>
+          ) : null}
+          {conversation?.messages.map((message) => {
+            const isStudent = message.role === 'student';
+            return (
+              <div
+                key={message.id}
+                data-testid="chat-message"
+                data-role={message.role}
+                className={`flex animate-fade-up ${isStudent ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[88%] rounded-2xl px-3 py-2 text-[12px] leading-relaxed ${
+                    isStudent
+                      ? 'rounded-br-md bg-brand-600 text-white'
+                      : 'rounded-bl-md bg-brand-50 text-strong'
+                  }`}
+                >
+                  {message.content}
+                </div>
+              </div>
+            );
+          })}
+          {sending ? (
+            <div className="flex w-fit items-center gap-1 rounded-2xl bg-sunken px-3 py-2.5">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="size-1.5 rounded-full bg-subtle"
+                  style={{ animation: 'dot-pulse 1.3s ease-in-out infinite', animationDelay: `${i * 0.16}s` }}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {error ? <p className="px-4 py-1.5 text-[11px] text-danger-500">{error}</p> : null}
+        <form
+          className="flex gap-2 border-t border-line p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
+          }}
+        >
+          <input
+            data-testid="chat-input"
+            className={`${inputClass} py-2 text-xs`}
+            value={draft}
+            disabled={readOnly || sending || ended}
+            placeholder={t('chat.placeholder')}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <Button
+            type="submit"
+            disabled={readOnly || sending || ended || !draft.trim()}
+            data-testid="chat-send"
+            aria-label={t('chat.send')}
+            className="shrink-0 px-3"
+          >
+            ➤
+          </Button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <Card className="flex h-[640px] flex-col overflow-hidden">
