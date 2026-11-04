@@ -31,11 +31,16 @@ test('the departments, the workspace and the scenario follow the language', asyn
 }) => {
   const sessionId = await enterSalesWorkspace(page);
 
+  // The old departments address opens the reception desk in the office.
   await page.goto('/departments');
+  await expect(page.getByTestId('department-desk')).toBeVisible();
   await page.getByTestId('language-switcher').selectOption('ja');
+  await expect(page.getByTestId('department-desk')).toContainText('BITE 受付');
   const card = page.locator('[data-department-slug="sales"]');
   await expect(card).toContainText('BITE Protein Drink を、採算の取れる条件で QuickMart に採用してもらいます');
-  await expect(card.getByRole('button', { name: 'ブートキャンプを再開' })).toBeVisible();
+  // Sales is the bootcamp being played, so the desk offers to carry on with it.
+  await expect(card.getByRole('button', { name: '続ける' })).toBeVisible();
+  await expect(page.locator('[data-department-slug="human-resources"]').getByRole('button', { name: 'ブートキャンプを始める' })).toBeVisible();
 
   await page.goto(`/workspace/${sessionId}`);
   await expect(page.locator('[data-step-key="sales-training"]')).toContainText('営業トレーニング');

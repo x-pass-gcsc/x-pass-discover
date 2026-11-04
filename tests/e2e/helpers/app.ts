@@ -13,9 +13,9 @@ let counter = 0;
 
 /**
  * Where signing in lands: the lobby (`/start`) for anyone who has not yet taken
- * the pre-survey, the welcome page for everyone else.
+ * the pre-survey, the office for everyone else.
  */
-export const SIGNED_IN_URL = /\/(start|welcome)(\?.*)?$/;
+export const SIGNED_IN_URL = /\/(start|office)(\?.*)?$/;
 
 /**
  * A fresh account per test. The suite runs in parallel against one in-memory
@@ -127,7 +127,8 @@ export async function completePreSurvey(
     if (current === total) break;
     await expect(question).not.toHaveAttribute('data-question-key', key);
   }
-  await page.waitForURL('**/departments');
+  // Finishing the survey walks the student into the office.
+  await page.waitForURL('**/office');
 }
 
 /** The session id an office URL (`/office?session=…`) is open on. */
@@ -153,15 +154,36 @@ export async function openWorkWindow(page: Page): Promise<void> {
 }
 
 /**
- * Starts (or resumes) a department's bootcamp: it lands in the office, and the
- * work window is opened so the step rail is on screen. Returns the session id
- * taken from the URL.
+ * Opens the reception desk over the office — what talking to the receptionist
+ * does, without the walk — and returns the department's card on it.
+ */
+export async function openDesk(page: Page, slug: string): Promise<Locator> {
+  const desk = page.getByTestId('department-desk');
+  // The button is server-rendered, so retry until hydration wires it up.
+  await expect(async () => {
+    if (!(await desk.isVisible())) await page.getByTestId('open-desk').click();
+    await expect(desk).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  return desk.locator(`[data-department-slug="${slug}"]`);
+}
+
+/** The department the office is playing, as the HUD names it ('' for none). */
+export function officeDepartment(page: Page): Locator {
+  return page.getByTestId('office-department');
+}
+
+/**
+ * Starts (or resumes) a department's bootcamp at the reception desk in the
+ * office, and opens the work window so the step rail is on screen. Returns the
+ * session id taken from the URL.
  */
 export async function startBootcamp(page: Page, slug = 'sales'): Promise<string> {
-  await page.goto('/departments');
-  const card = page.locator(`[data-department-slug="${slug}"]`);
+  await page.goto('/office');
+  const card = await openDesk(page, slug);
   await expect(card).toHaveAttribute('data-department-status', 'playable');
-  await card.getByRole('button', { name: /Start bootcamp|Resume bootcamp/ }).click();
+  await card.getByRole('button', { name: /Start bootcamp|Resume bootcamp|Continue/ }).click();
+  await expect(page.getByTestId('department-desk')).toHaveCount(0);
+  await expect(officeDepartment(page)).toHaveAttribute('data-current-department', slug);
   await page.waitForURL(/\/office\?session=/);
   const sessionId = sessionIdFromUrl(page);
   expect(sessionId).not.toBe('');

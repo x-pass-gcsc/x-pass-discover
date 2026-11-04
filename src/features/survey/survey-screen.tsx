@@ -81,7 +81,7 @@ export function SurveyScreen({
         return;
       }
       if (!response.ok) throw new Error(data.error ?? t('survey.saveFailed'));
-      router.push('/departments');
+      router.push('/office');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t('survey.saveFailed'));
       setPending(false);
@@ -267,7 +267,7 @@ export function SurveyScreen({
             <footer className="mt-6 flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => router.push('/departments')}
+                onClick={() => router.push('/office')}
                 className="text-xs font-medium text-subtle underline-offset-4 hover:text-strong hover:underline"
               >
                 {t('survey.skip')}
@@ -316,7 +316,7 @@ function TopBar({ account }: { account: ReactNode }) {
   const t = useT();
   const links = [
     { href: '/welcome', label: t('survey.nav.home'), icon: 'M3 9.5 10 4l7 5.5V17H3z' },
-    { href: '/departments', label: t('survey.nav.programs'), icon: 'M5 3h10v14H5zM8 7h4M8 10h4M8 13h2' },
+    { href: '/office?select=1', label: t('survey.nav.programs'), icon: 'M5 3h10v14H5zM8 7h4M8 10h4M8 13h2' },
     { href: '/report', label: t('survey.nav.reports'), icon: 'M4 16V9M10 16V4M16 16v-5' },
   ];
   return (
@@ -351,7 +351,7 @@ function SideNav() {
   const items = [
     { href: '/welcome', label: t('survey.side.home'), active: false },
     { href: '/pre-survey', label: t('survey.side.survey'), active: true },
-    { href: '/departments', label: t('survey.side.simulations'), active: false },
+    { href: '/office', label: t('survey.side.simulations'), active: false },
     { href: '/report', label: t('survey.side.results'), active: false },
   ];
   return (

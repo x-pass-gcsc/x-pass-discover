@@ -22,13 +22,13 @@ export default async function AdminLayout({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
-  if (!isAdmin(user)) redirect('/departments');
+  if (!isAdmin(user)) redirect('/office');
 
   return (
     <AppShell
       title="Admin"
       subtitle="Inspect scenario configuration and runtime behavior"
-      backHref="/departments"
+      backHref="/office"
       backLabel="Student app"
       right={
         adminAllowListConfigured ? null : (

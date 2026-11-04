@@ -4,7 +4,7 @@ import { completePreSurvey, signIn, signOut, signUp, uniqueEmail } from './helpe
 /**
  * A new account's first screen is the X-PASS Discover lobby, and its START
  * button is the way into the pre-survey. Once the pre-survey is done the
- * student is past day one, and signing in goes to the welcome page instead.
+ * student is past day one, and signing in goes to the office instead.
  */
 test('a new account opens in the lobby, and START begins the pre-survey', async ({ page }) => {
   const email = uniqueEmail('onboarding');
@@ -29,10 +29,10 @@ test('a new account opens in the lobby, and START begins the pre-survey', async 
   await completePreSurvey(page);
   await signOut(page);
   await signIn(page, email);
-  // Sign-in heads for the lobby, which sends a returning student on.
-  await page.waitForURL('**/welcome');
+  // Sign-in heads for the lobby, which sends a returning student on to the office.
+  await page.waitForURL('**/office');
   await page.goto('/start');
-  await page.waitForURL('**/welcome');
+  await page.waitForURL('**/office');
 });
 
 /**

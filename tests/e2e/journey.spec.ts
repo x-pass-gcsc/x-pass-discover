@@ -116,12 +116,14 @@ test.describe('the student journey', () => {
     await openStep(page, stepKeys[0]);
     await completeCurrentStep(page);
 
-    // Leave, come back through the department list, and land in the same
-    // session with the first step still recorded as done.
+    // Leave, come back through the old department list address (now the
+    // reception desk), and land in the same session with the first step still
+    // recorded as done.
     await page.goto('/departments');
     const card = page.locator('[data-department-slug="sales"]');
-    await expect(card.getByRole('button', { name: 'Resume bootcamp' })).toBeVisible();
-    await card.getByRole('button', { name: 'Resume bootcamp' }).click();
+    await expect(card).toHaveAttribute('data-department-session', 'in_progress');
+    await card.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByTestId('department-desk')).toHaveCount(0);
     await page.waitForURL(/\/office\?session=/);
 
     expect(page.url()).toContain(sessionId);

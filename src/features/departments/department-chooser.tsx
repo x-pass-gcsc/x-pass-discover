@@ -10,7 +10,14 @@ import { useT } from '@/i18n/client';
 import type { MessageKey } from '@/i18n/messages/en';
 import type { DepartmentDefinition } from '@/types/scenario';
 
-type SessionSummary = { id: string; departmentSlug: string; status: string };
+export type SessionSummary = {
+  id: string;
+  departmentSlug: string;
+  status: string;
+  /** Steps finished and steps in the scenario, where the caller has them. */
+  completedSteps?: number;
+  totalSteps?: number;
+};
 
 const GLYPHS: Record<string, string> = {
   marketing: '◆',
@@ -20,14 +27,29 @@ const GLYPHS: Record<string, string> = {
   'human-resources': '■',
 };
 
+/**
+ * Choose up to three departments and start or resume their bootcamps.
+ *
+ * `variant="desk"` is the same chooser as the reception desk opens it over the
+ * office: no cover pictures or office link, the department being played marked
+ * as such, and `onOpenSession` deciding where a started or resumed bootcamp
+ * goes. Sessions are never deleted here — switching department only opens a
+ * different session, so every department keeps its own progress.
+ */
 export function DepartmentChooser({
   departments,
   initialSelection,
   sessions,
+  variant = 'page',
+  currentSessionId = null,
+  onOpenSession,
 }: {
   departments: DepartmentDefinition[];
   initialSelection: string[];
   sessions: SessionSummary[];
+  variant?: 'page' | 'desk';
+  currentSessionId?: string | null;
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -35,8 +57,11 @@ export function DepartmentChooser({
   const [selected, setSelected] = useState<string[]>(initialSelection);
   const [busy, setBusy] = useState<string | null>(null);
 
+  const desk = variant === 'desk';
   const sessionFor = (slug: string) =>
     sessions.find((s) => s.departmentSlug === slug) ?? null;
+  const openSession = (sessionId: string) =>
+    onOpenSession ? onOpenSession(sessionId) : router.push(`/office?session=${sessionId}`);
 
   function toggle(slug: string) {
     setSelected((prev) => {
@@ -81,7 +106,8 @@ export function DepartmentChooser({
     try {
       const existing = sessionFor(slug);
       if (existing) {
-        router.push(`/office?session=${existing.id}`);
+        openSession(existing.id);
+        setBusy(null);
         return;
       }
       const response = await fetch('/api/sessions', {
@@ -91,7 +117,7 @@ export function DepartmentChooser({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? t('chooser.startFailed'));
-      router.push(`/office?session=${data.session.id}`);
+      openSession(data.session.id);
     } catch (cause) {
       toast.push({
         tone: 'danger',
@@ -133,17 +159,21 @@ export function DepartmentChooser({
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className={`grid gap-4 ${desk ? 'sm:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-2 xl:grid-cols-3'}`}>
         {departments.map((department) => {
           const isSelected = selected.includes(department.slug);
           const session = sessionFor(department.slug);
           const playable = department.status === 'playable';
+          const current = !!session && session.id === currentSessionId;
+          const hasProgress = session?.totalSteps !== undefined && session.completedSteps !== undefined;
 
           return (
             <Card
               key={department.slug}
               data-department-slug={department.slug}
               data-department-status={department.status}
+              data-department-session={session?.status ?? 'none'}
+              data-department-current={current ? 'true' : undefined}
               accent={department.accentColor}
               interactive
               className={`flex flex-col transition-shadow duration-200 ${
@@ -153,14 +183,15 @@ export function DepartmentChooser({
               <Cover
                 src={department.coverImage}
                 alt=""
-                className="h-32 border-b border-line"
+                className={`${desk ? 'h-20' : 'h-32'} border-b border-line`}
                 overlay={
                   <>
                     <span
                       className="absolute inset-x-0 bottom-0 h-px"
                       style={{ background: department.accentColor, opacity: 0.35 }}
                     />
-                    <span className="absolute right-3 top-3">
+                    <span className="absolute right-3 top-3 flex gap-1.5">
+                      {current ? <Badge tone="brand">{t('desk.current')}</Badge> : null}
                       {playable ? (
                         <Badge tone="success" dot>
                           {t('chooser.playable')}
@@ -248,12 +279,19 @@ export function DepartmentChooser({
                       loading={busy === department.slug}
                       className="flex-1"
                     >
-                      {session ? t('chooser.resume') : t('chooser.start')}
+                      {current ? t('desk.continueHere') : session ? t('chooser.resume') : t('chooser.start')}
                     </Button>
                     {session ? (
-                      <Badge tone={session.status === 'completed' ? 'success' : 'brand'} dot>
-                        {t(`sessionStatus.${session.status}` as MessageKey)}
-                      </Badge>
+                      <span className="flex shrink-0 flex-col items-end gap-0.5">
+                        <Badge tone={session.status === 'completed' ? 'success' : 'brand'} dot>
+                          {t(`sessionStatus.${session.status}` as MessageKey)}
+                        </Badge>
+                        {hasProgress ? (
+                          <span className="text-[10px] tabular-nums text-muted">
+                            {t('desk.progress', { done: session.completedSteps!, total: session.totalSteps! })}
+                          </span>
+                        ) : null}
+                      </span>
                     ) : null}
                   </div>
                 ) : (
@@ -267,6 +305,7 @@ export function DepartmentChooser({
         })}
       </div>
 
+      {desk ? null : (
       <div className="flex justify-end">
         <Link
           href="/office"
@@ -275,6 +314,7 @@ export function DepartmentChooser({
           {t('chooser.officeLink')}
         </Link>
       </div>
+      )}
     </div>
   );
 }

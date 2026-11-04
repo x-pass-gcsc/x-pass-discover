@@ -50,7 +50,7 @@ export default async function WelcomePage() {
             <Link href="/pre-survey">
               <Button>{t('welcome.startSurvey')}</Button>
             </Link>
-            <Link href="/departments">
+            <Link href="/office?select=1">
               <Button variant="secondary">{t('welcome.skipToDepartments')}</Button>
             </Link>
           </div>
