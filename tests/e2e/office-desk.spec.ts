@@ -87,6 +87,31 @@ test('no more than three departments can be selected', async ({ page }) => {
   expect(tooMany.ok()).toBe(false);
 });
 
+test('starting a bootcamp counts as choosing its department, within the three', async ({ page }) => {
+  await signUpAsNewStudent(page, 'Full Hands');
+  await page.goto('/office');
+
+  // Three other departments already chosen: a fourth cannot be started.
+  const chose = await page.request.post('/api/departments/selection', {
+    data: { departmentSlugs: ['marketing', 'strategy', 'product-management'] },
+  });
+  expect(chose.ok()).toBe(true);
+  expect((await page.request.post('/api/sessions', { data: { departmentSlug: 'sales' } })).ok()).toBe(false);
+  await page.reload();
+  const card = await openDesk(page, 'sales');
+  await card.getByRole('button', { name: 'Start bootcamp' }).click();
+  await expect(page.getByText('Three is the limit')).toBeVisible();
+  await expect(page.getByTestId('department-desk')).toBeVisible();
+
+  // With room left, starting Sales adds it to the selection.
+  await page.request.post('/api/departments/selection', { data: { departmentSlugs: ['marketing'] } });
+  await startBootcamp(page, 'sales');
+  await page.getByTestId('close-work').click();
+  await openDesk(page, 'sales');
+  await expect(page.locator('[data-department-slug="sales"] button[aria-pressed]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-department-slug="marketing"] button[aria-pressed]')).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('switching department keeps every bootcamp and its progress', async ({ page }) => {
   await signUpAsNewStudent(page, 'Two Departments');
 

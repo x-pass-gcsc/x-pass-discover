@@ -110,6 +110,13 @@ export function DepartmentChooser({
         setBusy(null);
         return;
       }
+      // A new bootcamp is a new department in the three; the server holds the
+      // same line, this only says so without the round trip.
+      if (!selected.includes(slug) && selected.length >= 3) {
+        toast.push({ tone: 'warn', title: t('chooser.limitTitle'), description: t('chooser.limitBody') });
+        setBusy(null);
+        return;
+      }
       const response = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -137,7 +144,7 @@ export function DepartmentChooser({
               <span
                 key={index}
                 className={`h-1.5 w-7 rounded-full transition-colors duration-300 ${
-                  index < selected.length ? 'bg-brand-500' : 'bg-sunken'
+                  index < selected.length ? 'bg-brand-500' : 'bg-line-strong'
                 }`}
               />
             ))}

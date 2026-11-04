@@ -335,6 +335,9 @@ export async function markStepStarted(
 
 // ------------------------------------------------------------ session create
 
+/** A student explores at most this many departments. */
+export const MAX_DEPARTMENTS = 3;
+
 export async function startSession(
   userId: string,
   departmentSlug: string,
@@ -351,6 +354,18 @@ export async function startSession(
 
   const existing = await repo.findActiveSession(userId, departmentSlug);
   if (existing) return existing;
+
+  // Starting a bootcamp chooses its department: it joins the student's
+  // selection, which holds at most three.
+  const selection = (await repo.getDepartmentSelection(userId))?.departmentSlugs ?? [];
+  if (!selection.includes(departmentSlug)) {
+    if (selection.length >= MAX_DEPARTMENTS) {
+      throw new ScenarioRuleError(
+        `You have already chosen ${MAX_DEPARTMENTS} departments. Deselect one before starting ${department.name}.`,
+      );
+    }
+    await repo.saveDepartmentSelection(userId, [...selection, departmentSlug]);
+  }
 
   const scenario = getPublishedScenario(department.scenarioKey);
   if (!scenario) {
