@@ -6,18 +6,19 @@ import { getLocale, getT } from '@/i18n/server';
 import { getCurrentUser } from '@/lib/auth/session';
 import { runtimeModeSummary } from '@/lib/env';
 import { loadSessionView } from '@/services/scenario/session-service';
+import { loadDepartmentDesk } from '@/features/departments/load-desk';
 import { OfficeClient } from '@/features/office/office-client';
 import type { SessionView } from '@/types/session-view';
 
 export default async function OfficePage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string; work?: string; step?: string }>;
+  searchParams: Promise<{ session?: string; work?: string; step?: string; select?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
 
-  const { session: requestedSessionId, work, step } = await searchParams;
+  const { session: requestedSessionId, work, step, select } = await searchParams;
   const repo = getRepository();
 
   // Fall back to the student's most recent session so walking into the office
@@ -29,14 +30,17 @@ export default async function OfficePage({
     sessions[0] ??
     null;
 
+  const locale = await getLocale();
   let view: SessionView | null = null;
   if (target) {
     try {
-      view = await loadSessionView(target.id, user.id, await getLocale());
+      view = await loadSessionView(target.id, user.id, locale);
     } catch {
       view = null;
     }
   }
+  // The reception desk: departments are chosen and changed inside the office.
+  const desk = await loadDepartmentDesk(user.id, locale);
 
   const runtime = runtimeModeSummary();
   const t = await getT();
@@ -45,8 +49,8 @@ export default async function OfficePage({
     <AppShell
       title={t('office.title')}
       subtitle={view ? view.department.projectTitle : t('office.visitorMode')}
-      backHref="/departments"
-      backLabel={t('office.backDepartments')}
+      backHref="/welcome"
+      backLabel={t('departments.backWelcome')}
       wide
       right={
         <RuntimeBadges
@@ -57,7 +61,14 @@ export default async function OfficePage({
         />
       }
     >
-      <OfficeClient initialView={view} openWork={work === '1'} openStepKey={step ?? null} playerName={user.displayName} />
+      <OfficeClient
+        initialView={view}
+        openWork={work === '1'}
+        openStepKey={step ?? null}
+        desk={desk}
+        openDesk={select === '1'}
+        playerName={user.displayName}
+      />
     </AppShell>
   );
 }

@@ -124,6 +124,7 @@ export function QuestTracker({
   npcName,
   player,
   onStart,
+  onChooseDepartment,
 }: {
   view: SessionView | null;
   quest: Quest | null;
@@ -131,15 +132,42 @@ export function QuestTracker({
   npcName: string | null;
   player: { x: number; y: number } | null;
   onStart: () => void;
+  /** With no bootcamp yet: open the reception desk without walking there. */
+  onChooseDepartment?: () => void;
 }) {
   const t = useT();
   if (!view) {
+    // A visitor's one quest: reception, where a department is chosen.
     return (
-      <div className="pointer-events-none rounded-xl border border-white/70 bg-surface/95 px-4 py-2.5 shadow-float">
-        <span className="block text-[10px] font-semibold uppercase tracking-wider text-brand-600">
-          {t('office.visitorMode')}
+      <div
+        className="flex items-center gap-3 rounded-xl border-2 border-warn-400/70 bg-surface/95 py-2 pl-2.5 pr-2 shadow-float"
+        data-testid="office-mission"
+        data-quest-step="reception"
+      >
+        <span
+          aria-hidden
+          className="grid size-9 shrink-0 animate-[pulse_2s_ease-in-out_infinite] place-items-center rounded-full bg-warn-500 text-lg font-black text-white"
+        >
+          !
         </span>
-        <span className="block text-sm font-semibold text-strong">{t('office.explore')}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-brand-600">
+            {t('office.visitorMode')}
+          </span>
+          <span className="block text-sm font-semibold leading-snug text-strong">
+            {t('desk.goToReception')}
+          </span>
+        </span>
+        {onChooseDepartment ? (
+          <button
+            type="button"
+            onClick={onChooseDepartment}
+            className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700"
+            data-testid="visitor-open-desk"
+          >
+            {t('desk.open')}
+          </button>
+        ) : null}
       </div>
     );
   }

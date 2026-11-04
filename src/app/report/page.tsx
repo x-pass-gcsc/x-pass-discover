@@ -42,8 +42,8 @@ export default async function ReportPage() {
     <AppShell
       title="Career report"
       subtitle="What you liked, and what the work showed — kept separate"
-      backHref="/departments"
-      backLabel="Departments"
+      backHref="/office"
+      backLabel="BITE Office"
     >
       <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
         <Card>
@@ -170,7 +170,7 @@ export default async function ReportPage() {
               {sessions.length === 0 ? (
                 <EmptyState icon="🧭">
                   No bootcamps yet.{' '}
-                  <Link href="/departments" className="text-brand-400 hover:underline">
+                  <Link href="/office?select=1" className="text-brand-400 hover:underline">
                     Choose a department
                   </Link>
                   .

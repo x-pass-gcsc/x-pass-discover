@@ -17,10 +17,9 @@ test('a student cannot reach the admin screens in a production build', async ({ 
   await enterSalesWorkspace(page);
 
   await page.goto('/admin/ai-personas');
-  await page.waitForURL('**/departments');
-  expect(page.url(), 'a non-allow-listed user is sent back to the app').toContain(
-    '/departments',
-  );
+  // The office may add the open session to the address, so match the path only.
+  await page.waitForURL(/\/office(\?.*)?$/);
+  expect(page.url(), 'a non-allow-listed user is sent back to the app').toContain('/office');
 });
 
 test('the persona inspector shows the wiring and withholds the content', async ({ page }) => {

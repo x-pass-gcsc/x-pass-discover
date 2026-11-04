@@ -51,8 +51,19 @@ test('the office boots and its prompt follows the player', async ({ page }) => {
   });
   await expect(prompt).toContainText('Talk');
 
-  // And walking away takes it back — the prompt tracks proximity, it does not
-  // latch on the first time something is near. Due east stays inside the
+  // Talking to reception opens the department chooser over the office, and
+  // the player stands still while it is open.
+  await page.keyboard.press('e');
+  const desk = page.getByTestId('department-desk');
+  await expect(desk).toBeVisible();
+  await walk(page, ['ArrowRight'], 600);
+  await expect(prompt, 'the player should not walk while the desk is open').toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(desk).toHaveCount(0);
+
+  // And walking away takes it back — so walking works again once the desk is
+  // closed, and the prompt tracks proximity rather than latching on the first
+  // time something is near. Due east stays inside the
   // lobby; south is the notification area, which raises its own prompt.
   await walk(page, ['ArrowRight'], 1500);
   await expect(prompt).toHaveCount(0);

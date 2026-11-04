@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Badge, Button, Card, CardHeader, EmptyState } from '@/components/ui';
@@ -23,6 +23,8 @@ import type { MessageKey } from '@/i18n/messages/en';
 import { NPCS, ROOMS, type OfficeNpc } from '@/game/office/map';
 import { logClientEvent } from '@/lib/client-api';
 import type { SessionView } from '@/types/session-view';
+import type { DepartmentDesk as DeskData } from '@/features/departments/load-desk';
+import { DepartmentDesk } from './department-desk';
 import { DepartmentIntro } from './department-intro';
 import { OfficeCanvas } from './office-canvas';
 
@@ -31,8 +33,12 @@ type Overlay =
   | { kind: 'resources' }
   | { kind: 'badges' }
   | { kind: 'chat'; personaKey: string; stepKey: string }
-  | { kind: 'message'; title: string; body: string }
+  /** `desk`: also offer the way to the reception desk. */
+  | { kind: 'message'; title: string; body: string; desk?: boolean }
   | { kind: 'notifications' };
+
+/** The receptionist, who opens the department chooser. */
+const RECEPTIONIST = NPCS.find((npc) => npc.key === 'npc-receptionist');
 
 /** A senior handing over a step, shown as a dialogue box over the office. */
 type Dialogue = { npc: OfficeNpc; stepKey: string; again: boolean };
@@ -45,20 +51,32 @@ type Dialogue = { npc: OfficeNpc; stepKey: string; again: boolean };
  * office, without leaving it. Phaser reports an interaction; React decides
  * what it means, owns the session view, and draws the HUD (level, quest,
  * badges, rewards). Business state stays on this side of the bridge.
+ *
+ * Departments are chosen here too: the receptionist opens the department
+ * chooser over the office, and starting or resuming a bootcamp switches the
+ * office to that session in place. A student with no bootcamp yet walks the
+ * office as a visitor, pointed at reception.
  */
 export function OfficeClient({
   initialView,
   openWork = false,
   openStepKey = null,
+  desk,
+  openDesk = false,
   playerName,
 }: {
   initialView: SessionView | null;
   openWork?: boolean;
   /** The step to open the work window on, when `openWork`. */
   openStepKey?: string | null;
+  /** The department chooser's data: departments, selection, bootcamps. */
+  desk: DeskData;
+  /** Open the reception desk on arrival (`/office?select=1`). */
+  openDesk?: boolean;
   playerName: string;
 }) {
   const t = useT();
+  const router = useRouter();
   const toast = useToast();
   const bridge = useMemo(() => new OfficeBridge(), []);
   const roomName = (key: string) => t(`office.room.${key}` as MessageKey);
@@ -76,12 +94,6 @@ export function OfficeClient({
     [t],
   );
   const [view, setView] = useState<SessionView | null>(initialView);
-  // Switching language re-renders the page on the server; take the re-worded view.
-  const [renderedView, setRenderedView] = useState(initialView);
-  if (initialView !== renderedView) {
-    setRenderedView(initialView);
-    setView(initialView);
-  }
   const [prompt, setPrompt] = useState<{
     text: string;
     action: string;
@@ -97,6 +109,7 @@ export function OfficeClient({
     () => !!initialView && initialView.progress.completedSteps === 0 && !openWork,
   );
   const [reward, setReward] = useState<Reward | null>(null);
+  const [deskOpen, setDeskOpen] = useState(openDesk);
   /** The step open in the work window, or null when the window is closed. */
   const [workStepKey, setWorkStepKey] = useState<string | null>(() =>
     openWork && initialView
@@ -107,10 +120,47 @@ export function OfficeClient({
         null)
       : null,
   );
+  // Switching language re-renders the page on the server; take the re-worded view.
+  const [renderedView, setRenderedView] = useState(initialView);
+  if (initialView !== renderedView) {
+    // A different bootcamp (chosen at the desk) starts from its own first day,
+    // with nothing of the previous one left open over the office.
+    if (initialView?.session.id !== renderedView?.session.id) {
+      setIntro(!!initialView && initialView.progress.completedSteps === 0);
+      setWorkStepKey(null);
+      setDialogue(null);
+      setOverlay({ kind: 'none' });
+    }
+    setRenderedView(initialView);
+    setView(initialView);
+  }
   /** Steps the student has accepted from a senior, so the second visit is shorter. */
   const accepted = useRef(new Set<string>());
   const viewRef = useRef(view);
   viewRef.current = view;
+
+  // A new bootcamp's quests are its own.
+  const viewSessionId = view?.session.id ?? null;
+  useEffect(() => {
+    accepted.current = new Set();
+  }, [viewSessionId]);
+
+  // `?select=1` opens the desk once; a reload should not open it again.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('select')) return;
+    url.searchParams.delete('select');
+    window.history.replaceState(window.history.state, '', url);
+  }, []);
+
+  const closeDesk = useCallback(() => setDeskOpen(false), []);
+  const openSession = useCallback(
+    (nextSessionId: string) => {
+      setDeskOpen(false);
+      if (nextSessionId !== viewRef.current?.session.id) router.push(`/office?session=${nextSessionId}`);
+    },
+    [router],
+  );
 
   const quest = useMemo(() => currentQuest(view), [view]);
   const questRef = useRef(quest);
@@ -146,16 +196,20 @@ export function OfficeClient({
 
   // Keep the quest marker on whatever the next piece of work is. Re-sent on
   // `ready`, since a command before the scene exists has nowhere to go.
+  // With no bootcamp yet, the marker points at reception, where one is chosen.
   const sendMarker = useCallback(() => {
     const target = questRef.current?.target;
+    const visitor = !viewRef.current && RECEPTIONIST;
     bridge.command({
       type: 'marker',
       marker: target
         ? { x: target.x, y: target.y, npcKey: target.kind === 'npc' ? target.npcKey : null }
-        : null,
+        : visitor
+          ? { x: visitor.x, y: visitor.y, npcKey: visitor.key }
+          : null,
     });
   }, [bridge]);
-  useEffect(() => sendMarker(), [quest, sendMarker]);
+  useEffect(() => sendMarker(), [quest, view, sendMarker]);
 
   // The address bar remembers an open work window, so a reload or a shared
   // link comes back to the same step rather than to the lobby.
@@ -175,7 +229,7 @@ export function OfficeClient({
   }, [sessionId, workStepKey]);
 
   // Walking pauses while anything you can type into is open over the office.
-  const paused = workStepKey !== null || dialogue !== null || intro || overlay.kind === 'chat';
+  const paused = workStepKey !== null || dialogue !== null || intro || deskOpen || overlay.kind === 'chat';
   useEffect(() => {
     bridge.command({ type: 'controls', enabled: !paused });
   }, [bridge, paused, booted]);
@@ -242,6 +296,7 @@ export function OfficeClient({
       kind: 'message',
       title: t('office.noBootcamp'),
       body: t('office.noSessionBody'),
+      desk: true,
     };
   }
 
@@ -272,6 +327,14 @@ export function OfficeClient({
         eventType: 'npc_interaction_started',
         metadata: { npcKey: npc.key, personaKey: npc.personaKey },
       });
+    }
+
+    // Reception is where departments are chosen and changed.
+    if (npc.key === RECEPTIONIST?.key) {
+      setDialogue(null);
+      setOverlay({ kind: 'none' });
+      setDeskOpen(true);
+      return;
     }
 
     if (!npc.personaKey) {
@@ -411,6 +474,35 @@ export function OfficeClient({
                 }
               />
             ) : null}
+            <span
+              className="pointer-events-auto flex max-w-[236px] items-center gap-2 rounded-lg bg-[#1d2433]/90 py-1 pl-3 pr-1 text-[11px] text-white shadow-float"
+              data-testid="office-department"
+              data-current-department={view?.department.slug ?? ''}
+            >
+              {view ? (
+                <span
+                  aria-hidden
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: view.department.accentColor }}
+                />
+              ) : null}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold">
+                  {view ? view.department.name : t('office.noBootcamp')}
+                </span>
+                {view && currentStep ? (
+                  <span className="block truncate text-[10px] text-white/70">{currentStep.title}</span>
+                ) : null}
+              </span>
+              <button
+                type="button"
+                onClick={() => setDeskOpen(true)}
+                data-testid="open-desk"
+                className="shrink-0 rounded-md bg-white/10 px-2 py-1 text-[10px] font-semibold hover:bg-white/20"
+              >
+                {view ? t('desk.change') : t('desk.open')}
+              </button>
+            </span>
             <span className="flex items-center gap-2 rounded-lg bg-[#1d2433]/90 px-3 py-1.5 text-[11px] font-semibold text-white shadow-float">
               <span className="size-1.5 rounded-full bg-brand-400" aria-hidden />
               {zoneKey ? roomName(zoneKey) : t('office.corridor')}
@@ -429,6 +521,7 @@ export function OfficeClient({
               npcName={quest?.npcKey ? (questNpc?.name ?? null) : null}
               player={playerTile}
               onStart={() => openWorkWindow(quest?.step.key)}
+              onChooseDepartment={() => setDeskOpen(true)}
             />
           </div>
 
@@ -555,12 +648,13 @@ export function OfficeClient({
               {t('office.openWorkspace')}
             </button>
           ) : (
-            <Link
-              href="/departments"
+            <button
+              type="button"
+              onClick={() => setDeskOpen(true)}
               className="shrink-0 text-[11px] font-medium text-brand-400 underline-offset-4 hover:underline"
             >
               {t('office.startBootcamp')}
-            </Link>
+            </button>
           )}
         </div>
       </div>
@@ -708,6 +802,18 @@ export function OfficeClient({
             <OverlayHeader title={overlay.title} onClose={() => setOverlay({ kind: 'none' })} />
             <Card className="p-5">
               <p className="text-sm leading-relaxed text-body">{overlay.body}</p>
+              {overlay.desk ? (
+                <Button
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => {
+                    setOverlay({ kind: 'none' });
+                    setDeskOpen(true);
+                  }}
+                >
+                  {t('desk.open')}
+                </Button>
+              ) : null}
             </Card>
           </div>
         ) : null}
@@ -720,6 +826,15 @@ export function OfficeClient({
           stepKey={workStepKey}
           onStepChange={setWorkStepKey}
           onClose={() => setWorkStepKey(null)}
+        />
+      ) : null}
+
+      {deskOpen ? (
+        <DepartmentDesk
+          desk={desk}
+          currentSessionId={view?.session.id ?? null}
+          onOpenSession={openSession}
+          onClose={closeDesk}
         />
       ) : null}
 

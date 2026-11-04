@@ -93,7 +93,7 @@ export default async function MyPage() {
               <EmptyState>
                 <p>{t('mypage.bootcamps.empty')}</p>
                 <Link
-                  href="/departments"
+                  href="/office?select=1"
                   className="mt-2 inline-block font-medium text-brand-600 underline-offset-2 hover:underline"
                 >
                   {t('mypage.bootcamps.choose')}

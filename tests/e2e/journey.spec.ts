@@ -9,6 +9,7 @@ import {
   uniqueEmail,
 } from './helpers/app';
 import { completeCurrentStep } from './helpers/forms';
+import { PRE_SURVEY_QUESTIONS } from '../../src/content/pre-survey';
 
 /** Every department with a scenario. A new one is walked the day it ships. */
 const PLAYABLE = ['sales', 'human-resources'];
@@ -38,10 +39,13 @@ test.describe('the student journey', () => {
 
       // Strongly drawn to sales, not much to marketing; everything else neutral-high.
       const scores = Object.fromEntries(
-        Array.from({ length: 15 }, (_, i) => String(i + 1).padStart(2, '0')).flatMap((n) => [
-          [`SAL_${n}`, 5],
-          [`MKT_${n}`, 2],
-        ]),
+        PRE_SURVEY_QUESTIONS.flatMap((q) =>
+          q.kind === 'scale' && q.measures?.department === 'sales'
+            ? [[q.key, 5]]
+            : q.kind === 'scale' && q.measures?.department === 'marketing'
+              ? [[q.key, 2]]
+              : [],
+        ),
       );
       await completePreSurvey(page, scores);
       await startBootcamp(page, slug);
@@ -92,6 +96,11 @@ test.describe('the student journey', () => {
       // LIKE and SKILL FIT are two columns, never one number. SKILL FIT reads NE
       // until the evaluation pipeline exists, and that is the honest answer.
       await expect(page.getByRole('heading', { name: 'LIKE vs SKILL FIT' })).toBeVisible();
+      // LIKE is the mean of each department's pre-survey answers: 5 → 100, 2 → 40,
+      // the default 4 → 80.
+      await expect(page.getByRole('img', { name: 'Sales LIKE 100 out of 100' })).toBeVisible();
+      await expect(page.getByRole('img', { name: 'Marketing LIKE 40 out of 100' })).toBeVisible();
+      await expect(page.getByRole('img', { name: 'Strategy LIKE 80 out of 100' })).toBeVisible();
       await expect(page.getByText('NE').first()).toBeVisible();
     });
   }
@@ -107,12 +116,14 @@ test.describe('the student journey', () => {
     await openStep(page, stepKeys[0]);
     await completeCurrentStep(page);
 
-    // Leave, come back through the department list, and land in the same
-    // session with the first step still recorded as done.
+    // Leave, come back through the old department list address (now the
+    // reception desk), and land in the same session with the first step still
+    // recorded as done.
     await page.goto('/departments');
     const card = page.locator('[data-department-slug="sales"]');
-    await expect(card.getByRole('button', { name: 'Resume bootcamp' })).toBeVisible();
-    await card.getByRole('button', { name: 'Resume bootcamp' }).click();
+    await expect(card).toHaveAttribute('data-department-session', 'in_progress');
+    await card.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByTestId('department-desk')).toHaveCount(0);
     await page.waitForURL(/\/office\?session=/);
 
     expect(page.url()).toContain(sessionId);
