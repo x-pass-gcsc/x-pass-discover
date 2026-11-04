@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { AccountMenu } from '@/features/auth/account-menu';
+import { NewSurveyNotice } from '@/features/survey/new-survey-notice';
 import { getT } from '@/i18n/server';
 import { Logo } from './branding';
 
@@ -57,7 +58,10 @@ export async function AppShell({
           <AccountMenu />
         </div>
       </header>
-      <main className={`mx-auto ${container} animate-fade-up px-5 py-6`}>{children}</main>
+      <main className={`mx-auto ${container} animate-fade-up px-5 py-6`}>
+        <NewSurveyNotice />
+        {children}
+      </main>
     </div>
   );
 }

@@ -34,3 +34,35 @@ test('a new account opens in the lobby, and START begins the pre-survey', async 
   await page.goto('/start');
   await page.waitForURL('**/welcome');
 });
+
+/**
+ * A student who answered an earlier version of the pre-survey is told that a
+ * new one is waiting, until they take it.
+ */
+test('an earlier pre-survey respondent is told about the new one', async ({ page }) => {
+  await signUp(page, { email: uniqueEmail('earlier-survey'), displayName: 'Earlier Respondent' });
+  // Answers saved under the retired 75-statement keys, as before the switch.
+  const saved = await page.request.post('/api/pre-survey', {
+    data: { answers: { SAL_01: 5, MKT_01: 2 } },
+  });
+  expect(saved.ok()).toBe(true);
+
+  await page.goto('/welcome');
+  const notice = page.getByTestId('new-survey-notice');
+  await expect(notice).toContainText('A new pre-survey is available');
+  await notice.getByRole('button', { name: 'Take the new pre-survey' }).click();
+  await page.waitForURL('**/pre-survey');
+
+  await completePreSurvey(page);
+  await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+  await expect(page.getByTestId('new-survey-notice')).toHaveCount(0);
+  await page.goto('/welcome');
+  await expect(page.getByTestId('new-survey-notice')).toHaveCount(0);
+});
+
+test('a student who has not taken any pre-survey sees no new-survey notice', async ({ page }) => {
+  await signUp(page, { email: uniqueEmail('no-survey'), displayName: 'No Survey Yet' });
+  await page.goto('/welcome');
+  await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+  await expect(page.getByTestId('new-survey-notice')).toHaveCount(0);
+});

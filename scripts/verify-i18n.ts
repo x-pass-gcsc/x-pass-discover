@@ -14,8 +14,8 @@
  *   - a list (facts, table rows) has a different length or shape,
  *   - a prefill template lost or gained a `{{task.field}}` placeholder,
  *   - a dictionary message lost or gained a `{name}` placeholder,
- *   - a pre-survey question repeats a key or names a department that does
- *     not exist. A question without a translation is reported, not failed.
+ *   - a pre-survey question is missing a language, repeats a key, or names a
+ *     department that does not exist.
  *
  * A scenario with no translation at all is reported, not failed: it is shown
  * in English, which is a decision rather than a mistake.
@@ -250,25 +250,15 @@ for (const locale of OTHER_LOCALES) {
 
 const surveyKeys = new Set<string>();
 const departmentSlugs = new Set(DEPARTMENTS.map((d) => d.slug));
-const untranslatedSurvey: Partial<Record<Locale, number>> = {};
 for (const question of PRE_SURVEY_QUESTIONS) {
   const at = `pre-survey ${question.key}`;
   if (surveyKeys.has(question.key)) problems.push(`${at}: duplicate key`);
   surveyKeys.add(question.key);
-  // The question source may be English only; an untranslated prompt is shown
-  // in English, so it is reported rather than failed.
   for (const locale of OTHER_LOCALES) {
-    if (!question.prompt[locale]?.trim()) untranslatedSurvey[locale] = (untranslatedSurvey[locale] ?? 0) + 1;
+    if (!question.prompt[locale]?.trim()) problems.push(`${at}: no ${locale} prompt`);
   }
   if (question.kind === 'scale' && question.measures && !departmentSlugs.has(question.measures.department)) {
     problems.push(`${at}: unknown department "${question.measures.department}"`);
-  }
-}
-
-for (const locale of OTHER_LOCALES) {
-  const missing = untranslatedSurvey[locale] ?? 0;
-  if (missing > 0) {
-    notes.push(`pre-survey: ${missing}/${PRE_SURVEY_QUESTIONS.length} questions have no ${locale} prompt (shown in English)`);
   }
 }
 
