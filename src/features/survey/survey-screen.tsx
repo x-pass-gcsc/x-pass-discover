@@ -84,7 +84,8 @@ export function SurveyScreen({
         return;
       }
       if (!response.ok) throw new Error(data.error ?? t('survey.saveFailed'));
-      router.push('/office');
+      // Straight to what the answers say, then on to the office.
+      router.push('/pre-survey/result');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t('survey.saveFailed'));
       setPending(false);

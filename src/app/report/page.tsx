@@ -6,7 +6,7 @@ import { Badge, Card, CardHeader, EmptyState } from '@/components/ui';
 import { getRepository } from '@/db/repository';
 import { DEPARTMENTS, listLocalizedDepartments } from '@/content/departments';
 import { PS50_RUBRIC_VERSION, scorePreSurvey50 } from '@/content/pre-survey-rubric-v1';
-import type { MessageKey } from '@/i18n/messages/en';
+import { PreLikeAreas } from '@/features/survey/pre-like-areas';
 import { getLocale, getT } from '@/i18n/server';
 import { getCurrentUser } from '@/lib/auth/session';
 
@@ -208,34 +208,9 @@ export default async function ReportPage() {
                         ) : null}
                         <span className="ml-auto font-mono text-xs text-strong">{role.index0to100}</span>
                       </div>
-                      <ul className="mt-1.5 space-y-1">
-                        {role.dimensions.map((dimension) => {
-                          const area = t(`report.dim.${dimension.code}` as MessageKey);
-                          return (
-                            <li
-                              key={dimension.code}
-                              className="grid grid-cols-[minmax(0,1fr)_minmax(60px,1fr)_28px] items-center gap-2 text-[11px]"
-                            >
-                              <span className="truncate text-muted">{area}</span>
-                              <span
-                                className="h-1.5 overflow-hidden rounded-full bg-sunken"
-                                role="img"
-                                aria-label={t('report.preLike.area', {
-                                  department: name,
-                                  area,
-                                  value: dimension.index0to100,
-                                })}
-                              >
-                                <span
-                                  className="block h-full rounded-full bg-brand-400"
-                                  style={{ width: `${Math.max(dimension.index0to100, 2)}%` }}
-                                />
-                              </span>
-                              <span className="text-right font-mono text-body">{dimension.index0to100}</span>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      <div className="mt-1.5">
+                        <PreLikeAreas role={role} name={name} t={t} />
+                      </div>
                     </div>
                   );
                 })}
