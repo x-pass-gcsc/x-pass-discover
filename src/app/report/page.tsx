@@ -1,10 +1,13 @@
-import { likeForDepartment } from '@/content/pre-survey';
+import { likeForDepartment, preLikeSource } from '@/content/pre-survey';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { Badge, Card, CardHeader, EmptyState } from '@/components/ui';
 import { getRepository } from '@/db/repository';
-import { DEPARTMENTS } from '@/content/departments';
+import { DEPARTMENTS, listLocalizedDepartments } from '@/content/departments';
+import { PS50_RUBRIC_VERSION, scorePreSurvey50 } from '@/content/pre-survey-rubric-v1';
+import type { MessageKey } from '@/i18n/messages/en';
+import { getLocale, getT } from '@/i18n/server';
 import { getCurrentUser } from '@/lib/auth/session';
 
 /**
@@ -16,6 +19,11 @@ import { getCurrentUser } from '@/lib/auth/session';
  * colour, and every bar is directly labelled so the value never depends on
  * reading the colour. SKILL FIT reads `NE` (Not Enough Evidence) until the
  * evaluation pipeline exists.
+ *
+ * LIKE comes from the pre-survey. The 50-item survey is scored by the PS50
+ * rubric as a 0–100 Pre-LIKE index with three areas per job, shown only once
+ * all 50 answers are in. A record from an earlier survey keeps its old 20–100
+ * values, labelled as such and never mixed with the new index.
  */
 export default async function ReportPage() {
   const user = await getCurrentUser();
@@ -31,8 +39,15 @@ export default async function ReportPage() {
     sessions.filter((s) => s.status === 'completed').map((s) => s.departmentSlug),
   );
 
+  const answers = preSurvey?.answers;
+  const source = preLikeSource(answers);
+  const ps50 = source === 'ps50-v1' && answers ? scorePreSurvey50(answers) : null;
+  const candidates = new Set<string>(ps50?.complete ? ps50.explorationCandidates : []);
+  const [t, locale] = await Promise.all([getT(), getLocale()]);
+  const localized = listLocalizedDepartments(locale);
+
   const rows = DEPARTMENTS.map((department) => {
-    const like = likeForDepartment(preSurvey?.answers, department.slug);
+    const like = likeForDepartment(answers, department.slug);
     return { department, like, completed: completedSlugs.has(department.slug) };
   });
 
@@ -57,8 +72,9 @@ export default async function ReportPage() {
               <span>Department</span>
               <span>
                 LIKE
-                <span className="ml-1.5 font-normal normal-case text-subtle">
-                  self-reported, before the work
+                <span className="ml-1.5 font-normal normal-case text-subtle" data-testid="like-scale">
+                  self-reported, before the work ·{' '}
+                  {source === 'legacy' ? t('report.preLike.scaleLegacy') : t('report.preLike.scaleNew')}
                 </span>
               </span>
               <span className="text-right">
@@ -87,6 +103,11 @@ export default async function ReportPage() {
                     {completed ? (
                       <Badge tone="success" className="shrink-0">
                         done
+                      </Badge>
+                    ) : null}
+                    {candidates.has(department.slug) ? (
+                      <Badge tone="brand" className="shrink-0" data-testid="explore-candidate">
+                        {t('report.preLike.candidate')}
                       </Badge>
                     ) : null}
                   </div>
@@ -122,7 +143,29 @@ export default async function ReportPage() {
               ))}
             </div>
 
-            {!hasLike ? (
+            {ps50 && !ps50.complete ? (
+              <p className="mt-3 rounded-lg border border-warn-400/40 bg-sunken px-3 py-2 text-[11px] text-body" data-testid="pre-like-incomplete">
+                {t('report.preLike.incomplete', { done: ps50.completedQuestions })}{' '}
+                <Link href="/pre-survey" className="text-brand-400 hover:underline">
+                  pre-survey
+                </Link>
+              </p>
+            ) : null}
+
+            {source === 'legacy' ? (
+              <p className="mt-3 rounded-lg border border-line bg-sunken px-3 py-2 text-[11px] text-muted" data-testid="pre-like-legacy">
+                {t('report.preLike.legacyNote')}
+              </p>
+            ) : null}
+
+            {ps50?.complete ? (
+              <p className="mt-3 text-[11px] leading-relaxed text-muted">
+                {t('report.preLike.candidatesNote')}
+                {ps50.similarTopScores ? <> {t('report.preLike.similar')}</> : null}
+              </p>
+            ) : null}
+
+            {!hasLike && !ps50 ? (
               <p className="mt-3 rounded-lg border border-line bg-sunken px-3 py-2 text-[11px] text-muted">
                 No LIKE values yet — complete the{' '}
                 <Link href="/pre-survey" className="text-brand-400 hover:underline">
@@ -146,6 +189,63 @@ export default async function ReportPage() {
         </Card>
 
         <div className="space-y-5">
+          {ps50?.complete ? (
+            <Card data-testid="pre-like-breakdown">
+              <CardHeader title={t('report.preLike.title')} subtitle={t('report.preLike.subtitle')} />
+              <div className="space-y-4 px-5 py-4">
+                {DEPARTMENTS.map((department) => {
+                  const role = ps50.roles[department.slug as keyof typeof ps50.roles];
+                  const name = localized.find((d) => d.slug === department.slug)?.name ?? department.name;
+                  if (!role) return null;
+                  return (
+                    <div key={department.slug} data-department-breakdown={department.slug}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-strong">{name}</span>
+                        {department.status !== 'playable' ? (
+                          <Badge tone="muted" className="shrink-0">
+                            {t('chooser.comingSoon')}
+                          </Badge>
+                        ) : null}
+                        <span className="ml-auto font-mono text-xs text-strong">{role.index0to100}</span>
+                      </div>
+                      <ul className="mt-1.5 space-y-1">
+                        {role.dimensions.map((dimension) => {
+                          const area = t(`report.dim.${dimension.code}` as MessageKey);
+                          return (
+                            <li
+                              key={dimension.code}
+                              className="grid grid-cols-[minmax(0,1fr)_minmax(60px,1fr)_28px] items-center gap-2 text-[11px]"
+                            >
+                              <span className="truncate text-muted">{area}</span>
+                              <span
+                                className="h-1.5 overflow-hidden rounded-full bg-sunken"
+                                role="img"
+                                aria-label={t('report.preLike.area', {
+                                  department: name,
+                                  area,
+                                  value: dimension.index0to100,
+                                })}
+                              >
+                                <span
+                                  className="block h-full rounded-full bg-brand-400"
+                                  style={{ width: `${Math.max(dimension.index0to100, 2)}%` }}
+                                />
+                              </span>
+                              <span className="text-right font-mono text-body">{dimension.index0to100}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })}
+                <p className="text-[10px] leading-relaxed text-subtle">
+                  {t('report.preLike.disclaimer', { version: PS50_RUBRIC_VERSION })}
+                </p>
+              </div>
+            </Card>
+          ) : null}
+
           <Card>
             <CardHeader title="How to read this" />
             <div className="space-y-3 px-5 py-4 text-xs leading-relaxed text-body">

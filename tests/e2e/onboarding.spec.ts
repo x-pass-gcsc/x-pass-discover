@@ -36,27 +36,44 @@ test('a new account opens in the lobby, and START begins the pre-survey', async 
 });
 
 /**
- * A student who answered an earlier version of the pre-survey is told that a
- * new one is waiting, until they take it.
+ * The pre-survey API takes exactly the 50 PS50 answers, each a whole number
+ * from 1 to 5. Anything else is refused with 400 and nothing is saved — which
+ * also means answers to the retired surveys can no longer be written through
+ * it. (The notice for students who answered an earlier version is covered by
+ * `npm run verify:rubric`, since such a record cannot be created here.)
  */
-test('an earlier pre-survey respondent is told about the new one', async ({ page }) => {
-  await signUp(page, { email: uniqueEmail('earlier-survey'), displayName: 'Earlier Respondent' });
-  // Answers saved under the retired 75-statement keys, as before the switch.
-  const saved = await page.request.post('/api/pre-survey', {
-    data: { answers: { SAL_01: 5, MKT_01: 2 } },
-  });
-  expect(saved.ok()).toBe(true);
+test('the pre-survey API accepts only the 50 answers, each 1 to 5', async ({ page }) => {
+  await signUp(page, { email: uniqueEmail('survey-api'), displayName: 'Strict Survey' });
+  const full = Object.fromEntries(
+    Array.from({ length: 50 }, (_, i) => [`PS50_${String(i + 1).padStart(2, '0')}`, 3]),
+  );
+  const post = (answers: Record<string, unknown>) =>
+    page.request.post('/api/pre-survey', { data: { answers } });
 
-  await page.goto('/welcome');
-  const notice = page.getByTestId('new-survey-notice');
-  await expect(notice).toContainText('A new pre-survey is available');
-  await notice.getByRole('button', { name: 'Take the new pre-survey' }).click();
-  await page.waitForURL('**/pre-survey');
+  const { PS50_50: _dropped, ...fortyNine } = full;
+  for (const [label, answers] of [
+    ['an earlier survey\'s keys', { SAL_01: 5, MKT_01: 2 }],
+    ['49 answers', fortyNine],
+    ['an answer of 6', { ...full, PS50_07: 6 }],
+    ['an answer of 0', { ...full, PS50_07: 0 }],
+    ['an answer of 2.5', { ...full, PS50_07: 2.5 }],
+    ['an answer as text', { ...full, PS50_07: '3' }],
+    ['an extra key', { ...full, PS50_51: 3 }],
+  ] as const) {
+    const response = await post(answers);
+    expect(response.status(), `${label} should be refused`).toBe(400);
+  }
 
-  await completePreSurvey(page);
-  await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
-  await expect(page.getByTestId('new-survey-notice')).toHaveCount(0);
-  await page.goto('/welcome');
+  // Nothing was saved: the report has no LIKE, and the lobby still opens.
+  await page.goto('/report');
+  await expect(page.getByRole('img', { name: 'Sales LIKE not recorded' })).toBeVisible();
+  await page.goto('/start');
+  await expect(page.getByTestId('start-lobby')).toBeVisible();
+
+  // All 50, each 1–5, is saved and scored.
+  expect((await post(full)).ok()).toBe(true);
+  await page.goto('/report');
+  await expect(page.getByRole('img', { name: 'Sales LIKE 50 out of 100' })).toBeVisible();
   await expect(page.getByTestId('new-survey-notice')).toHaveCount(0);
 });
 
