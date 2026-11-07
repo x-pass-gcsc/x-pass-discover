@@ -109,3 +109,41 @@ test('clicking a score twice as the survey moves on does not skip a question', a
   });
   expect(seen).toEqual(['PS50_01', 'PS50_02', 'PS50_03', 'PS50_04']);
 });
+
+/**
+ * Submitting the pre-survey shows its result straight away: every job's
+ * Pre-LIKE with its areas, and the jobs recommended to explore first.
+ */
+test('the pre-survey result shows the analysis and the recommended jobs', async ({ page }) => {
+  await signUp(page, { email: uniqueEmail('survey-result'), displayName: 'Result Reader' });
+  // Sales 5s, HR 4s, Strategy 3s, Marketing 2s, PM 1s → 100, 75, 50, 25, 0.
+  const byDepartment: Record<string, number> = { '0': 2, '1': 3, '2': 5, '3': 4, '4': 1 };
+  const scores = Object.fromEntries(
+    Array.from({ length: 50 }, (_, i) => [
+      `PS50_${String(i + 1).padStart(2, '0')}`,
+      byDepartment[String(Math.floor(i / 10))],
+    ]),
+  );
+  await completePreSurvey(page, scores, { continueToOffice: false });
+
+  const recommended = page.getByTestId('survey-result-recommended');
+  await expect(recommended.locator('[data-recommended]')).toHaveCount(3);
+  for (const slug of ['sales', 'human-resources', 'strategy']) {
+    await expect(recommended.locator(`[data-recommended="${slug}"]`)).toBeVisible();
+  }
+  // Playable jobs can be tried in the office; one that is not says so.
+  await expect(
+    recommended.locator('[data-recommended="sales"]').getByRole('button', { name: 'Try it in the office' }),
+  ).toBeVisible();
+  await expect(recommended.locator('[data-recommended="strategy"]')).toContainText('Coming soon');
+  // Three areas for each recommended job, scored on the same 0–100 scale.
+  await expect(recommended.getByRole('img', { name: /^Sales — .*: 100 out of 100$/ })).toHaveCount(3);
+
+  const all = page.getByTestId('survey-result-all');
+  for (const [name, value] of [['Sales', 100], ['Human Resources', 75], ['Strategy', 50], ['Marketing', 25], ['Product Management', 0]] as const) {
+    await expect(all.getByRole('img', { name: `${name} Pre-LIKE ${value} / 100` })).toBeVisible();
+  }
+
+  await page.getByTestId('result-continue').click();
+  await page.waitForURL('**/office');
+});
