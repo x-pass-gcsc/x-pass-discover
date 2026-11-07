@@ -83,3 +83,29 @@ test('a student who has not taken any pre-survey sees no new-survey notice', asy
   await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
   await expect(page.getByTestId('new-survey-notice')).toHaveCount(0);
 });
+
+/**
+ * Picking a score moves on by itself after a beat. A second click on the same
+ * question just as that happens must not move on twice: it used to skip the
+ * next question, and the survey then could not be submitted.
+ */
+test('clicking a score twice as the survey moves on does not skip a question', async ({ page }) => {
+  await signUp(page, { email: uniqueEmail('double-click'), displayName: 'Quick Clicker' });
+  await page.goto('/pre-survey');
+  await page.locator('[data-question-key="PS50_01"]').waitFor();
+  // Click "5", then the same (old) button again around the moment it moves on.
+  const seen = await page.evaluate(async () => {
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const question = document.querySelector('[data-question-key]')!;
+      seen.push(question.getAttribute('data-question-key') ?? '');
+      const five = [...question.querySelectorAll('button')].find((b) => b.textContent?.trim() === '5')!;
+      five.click();
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      five.click();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+    return seen;
+  });
+  expect(seen).toEqual(['PS50_01', 'PS50_02', 'PS50_03', 'PS50_04']);
+});

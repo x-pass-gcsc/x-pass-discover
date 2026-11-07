@@ -97,28 +97,44 @@ export function SurveyScreen({
   };
   useEffect(() => cancelAdvance, []);
 
+  /**
+   * Saves once every question is answered; otherwise goes back to the first
+   * one that is not, rather than sending a survey the server would refuse.
+   */
+  const finish = useCallback(
+    (toSave: Answers) => {
+      const open = PRE_SURVEY_QUESTIONS.findIndex((q) => !isAnswered(q, toSave[q.key]));
+      if (open === -1) void submit(toSave);
+      else setIndex(open);
+    },
+    [submit],
+  );
+
   const next = useCallback(() => {
     if (!canContinue || pending) return;
-    if (last) void submit(answers);
-    else setIndex((i) => Math.min(total - 1, i + 1));
-  }, [answers, canContinue, last, pending, submit, total]);
+    if (last) finish(answers);
+    else setIndex(Math.min(total - 1, index + 1));
+  }, [answers, canContinue, finish, index, last, pending, total]);
 
   // Picking a score is the answer and the step forward: after a beat, so the
   // choice is seen, the next question replaces it — or, on the last one, the
-  // survey is saved.
+  // survey is saved. The step goes to the question after the one answered, not
+  // "one further than now": a second click on the same question as the step
+  // happens would otherwise move on twice and skip a question.
   const choose = useCallback(
     (score: number) => {
       if (pending) return;
       const updated = { ...answers, [question.key]: score };
       setAnswers(updated);
       cancelAdvance();
+      const from = index;
       advanceTimer.current = window.setTimeout(() => {
         advanceTimer.current = null;
-        if (last) void submit(updated);
-        else setIndex((i) => Math.min(total - 1, i + 1));
+        if (last) finish(updated);
+        else setIndex(Math.min(total - 1, from + 1));
       }, ADVANCE_DELAY_MS);
     },
-    [answers, last, pending, question.key, submit, total],
+    [answers, finish, index, last, pending, question.key, total],
   );
 
   const back = () => {
