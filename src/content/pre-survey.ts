@@ -1,4 +1,5 @@
 import type { Locale } from '@/i18n/config';
+import { scoreDepartmentLikeV1 } from './pre-survey-rubric-v1';
 
 /**
  * The pre-survey, one question per screen.
@@ -67,26 +68,50 @@ const meanAsLike = (scores: number[]) =>
   Math.round((scores.reduce((sum, value) => sum + value, 0) / scores.length / 5) * 100);
 
 /**
- * LIKE for one department, 0–100, from a student's saved answers.
+ * Which version of the survey a saved record is scored as. Any `PS50_` key
+ * makes it the current 50-item survey, scored only by the PS50 rubric (v1); a
+ * record without one is an earlier version, scored the old way. The two are
+ * never mixed in one number.
+ */
+export type PreLikeSource = 'ps50-v1' | 'legacy';
+
+export function preLikeSource(answers: Record<string, unknown> | undefined): PreLikeSource | null {
+  if (!answers) return null;
+  const keys = Object.keys(answers);
+  if (keys.some((key) => key.startsWith('PS50_'))) return 'ps50-v1';
+  const legacy = keys.some(
+    (key) =>
+      key.startsWith('interest_') ||
+      Object.values(RETIRED_KEY_PREFIXES).some((prefix) => new RegExp(`^${prefix}\\d{2}$`).test(key)),
+  );
+  return legacy ? 'legacy' : null;
+}
+
+/**
+ * LIKE for one department from a student's saved answers.
  *
- * Until the rubric arrives this is the plain mean of the department's answered
- * statements, on the same 1–5 → 20–100 scale as before. Answers to an earlier
- * version of the survey (the competency inventory, or before it a single
- * `interest_<slug>` rating) are read only when the student answered nothing
- * for the department in this one. Null when there is nothing to read.
+ * - The 50-item survey (`ps50-v1`): the PS50 rubric's Pre-LIKE index, 0–100
+ *   (1 → 0, 3 → 50, 5 → 100). Null for every department unless all 50 answers
+ *   are valid; earlier answers in the same record are ignored.
+ * - An earlier version (`legacy`): the mean of the department's answers on the
+ *   old 1–5 → 20–100 scale, from the 75-statement inventory, or before it a
+ *   single `interest_<slug>` rating. Kept as it was, and labelled as the older
+ *   scale wherever it is shown.
+ *
+ * Null when there is nothing to read.
  */
 export function likeForDepartment(
   answers: Record<string, unknown> | undefined,
   department: string,
 ): number | null {
-  if (!answers) return null;
-  const scores = PRE_SURVEY_QUESTIONS.filter(
-    (question) => question.kind === 'scale' && question.measures?.department === department,
-  )
-    .map((question) => answers[question.key])
-    .filter((value): value is number => typeof value === 'number');
-  if (scores.length > 0) return meanAsLike(scores);
+  const source = preLikeSource(answers);
+  if (source === 'ps50-v1') return scoreDepartmentLikeV1(answers, department);
+  if (source === 'legacy' && answers) return legacyLikeForDepartment(answers, department);
+  return null;
+}
 
+/** The earlier surveys' LIKE, 20–100, exactly as it was computed before PS50. */
+function legacyLikeForDepartment(answers: Record<string, unknown>, department: string): number | null {
   const prefix = RETIRED_KEY_PREFIXES[department];
   const retired = prefix
     ? Object.entries(answers)

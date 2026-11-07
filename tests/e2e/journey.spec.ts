@@ -96,11 +96,22 @@ test.describe('the student journey', () => {
       // LIKE and SKILL FIT are two columns, never one number. SKILL FIT reads NE
       // until the evaluation pipeline exists, and that is the honest answer.
       await expect(page.getByRole('heading', { name: 'LIKE vs SKILL FIT' })).toBeVisible();
-      // LIKE is the mean of each department's pre-survey answers: 5 → 100, 2 → 40,
-      // the default 4 → 80.
+      // LIKE is the PS50 Pre-LIKE index of each department's answers:
+      // 1 → 0, 2 → 25, 3 → 50, 4 → 75, 5 → 100 (the default answer is 4).
       await expect(page.getByRole('img', { name: 'Sales LIKE 100 out of 100' })).toBeVisible();
-      await expect(page.getByRole('img', { name: 'Marketing LIKE 40 out of 100' })).toBeVisible();
-      await expect(page.getByRole('img', { name: 'Strategy LIKE 80 out of 100' })).toBeVisible();
+      await expect(page.getByRole('img', { name: 'Marketing LIKE 25 out of 100' })).toBeVisible();
+      await expect(page.getByRole('img', { name: 'Strategy LIKE 75 out of 100' })).toBeVisible();
+      // Exploration candidates are the top three, ties included: Sales, then
+      // the three jobs tied at 75. Marketing is not among them.
+      await expect(page.getByTestId('explore-candidate')).toHaveCount(4);
+      // Each job's three areas, with the job's answers fixed, score the same.
+      const breakdown = page.getByTestId('pre-like-breakdown');
+      await expect(breakdown.locator('[data-department-breakdown]')).toHaveCount(5);
+      await expect(breakdown.getByRole('img', { name: /^Sales — .*: 100 out of 100$/ })).toHaveCount(3);
+      await expect(breakdown.getByRole('img', { name: /^Marketing — .*: 25 out of 100$/ })).toHaveCount(3);
+      // A department without a playable bootcamp is not presented as one.
+      await expect(breakdown.locator('[data-department-breakdown="marketing"]')).toContainText('Coming soon');
+      await expect(breakdown.locator('[data-department-breakdown="sales"]')).not.toContainText('Coming soon');
       await expect(page.getByText('NE').first()).toBeVisible();
     });
   }

@@ -69,7 +69,10 @@ export function SurveyScreen({
       const response = await fetch('/api/pre-survey', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ answers: toSave }),
+        // Only this survey's answers: the server keeps any earlier ones itself.
+        body: JSON.stringify({
+          answers: Object.fromEntries(PRE_SURVEY_QUESTIONS.map((q) => [q.key, toSave[q.key]])),
+        }),
       });
       const data = await response.json();
       // The sign-in cookie no longer resolves to an account (it expired, or the
