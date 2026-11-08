@@ -23,7 +23,7 @@ export async function AuthLayout({ children }: { children: ReactNode }) {
       <aside className="relative hidden lg:block">
         <Image
           src={MEDIA.companyExterior.src}
-          alt={MEDIA.companyExterior.alt}
+          alt={t('media.companyExterior')}
           fill
           priority
           sizes="50vw"

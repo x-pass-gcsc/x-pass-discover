@@ -922,7 +922,7 @@ function WorkWindow({
             <span className="text-white/75">BITE OFFICE OS</span>
             <span className="mx-2 text-white/40">/</span>
             <span className="font-bold uppercase">
-              {view.department.slug.replace(/-/g, ' ')} WORKSPACE
+              {t('work.workspaceTitle', { department: view.department.name })}
             </span>
             {step ? <span className="ml-3 hidden text-xs text-white/55 lg:inline">{step.title}</span> : null}
           </span>

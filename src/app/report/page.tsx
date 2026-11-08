@@ -7,6 +7,7 @@ import { getRepository } from '@/db/repository';
 import { DEPARTMENTS, listLocalizedDepartments } from '@/content/departments';
 import { PS50_RUBRIC_VERSION, scorePreSurvey50 } from '@/content/pre-survey-rubric-v1';
 import { PreLikeAreas } from '@/features/survey/pre-like-areas';
+import type { MessageKey } from '@/i18n/messages/en';
 import { getLocale, getT } from '@/i18n/server';
 import { getCurrentUser } from '@/lib/auth/session';
 
@@ -45,6 +46,7 @@ export default async function ReportPage() {
   const candidates = new Set<string>(ps50?.complete ? ps50.explorationCandidates : []);
   const [t, locale] = await Promise.all([getT(), getLocale()]);
   const localized = listLocalizedDepartments(locale);
+  const nameOf = (slug: string) => localized.find((d) => d.slug === slug)?.name ?? slug;
 
   const rows = DEPARTMENTS.map((department) => {
     const like = likeForDepartment(answers, department.slug);
@@ -55,32 +57,32 @@ export default async function ReportPage() {
 
   return (
     <AppShell
-      title="Career report"
-      subtitle="What you liked, and what the work showed — kept separate"
+      title={t('report.title')}
+      subtitle={t('report.subtitle')}
       backHref="/office"
-      backLabel="BITE Office"
+      backLabel={t('office.title')}
     >
       <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
         <Card>
           <CardHeader
-            title="LIKE vs SKILL FIT"
-            subtitle="Two different measurements. They are never merged into one score."
+            title={t('report.likeFit.title')}
+            subtitle={t('report.likeFit.subtitle')}
           />
 
           <div className="px-5 py-4">
             <div className="grid grid-cols-[minmax(110px,1fr)_minmax(140px,2fr)_84px] gap-x-4 pb-2.5 text-[10px] font-medium uppercase tracking-wider text-muted">
-              <span>Department</span>
+              <span>{t('common.department')}</span>
               <span>
                 LIKE
                 <span className="ml-1.5 font-normal normal-case text-subtle" data-testid="like-scale">
-                  self-reported, before the work ·{' '}
+                  {t('report.likeNote')} ·{' '}
                   {source === 'legacy' ? t('report.preLike.scaleLegacy') : t('report.preLike.scaleNew')}
                 </span>
               </span>
               <span className="text-right">
                 SKILL FIT
                 <span className="block font-normal normal-case text-subtle">
-                  from work evidence
+                  {t('report.fitNote')}
                 </span>
               </span>
             </div>
@@ -98,11 +100,11 @@ export default async function ReportPage() {
                       style={{ backgroundColor: department.accentColor }}
                     />
                     <span className="truncate text-xs text-strong">
-                      {department.name}
+                      {nameOf(department.slug)}
                     </span>
                     {completed ? (
                       <Badge tone="success" className="shrink-0">
-                        done
+                        {t('report.done')}
                       </Badge>
                     ) : null}
                     {candidates.has(department.slug) ? (
@@ -118,8 +120,8 @@ export default async function ReportPage() {
                       role="img"
                       aria-label={
                         like === null
-                          ? `${department.name} LIKE not recorded`
-                          : `${department.name} LIKE ${like} out of 100`
+                          ? t('report.likeAriaNone', { department: nameOf(department.slug) })
+                          : t('report.likeAria', { department: nameOf(department.slug), value: like })
                       }
                     >
                       {like !== null ? (
@@ -135,7 +137,7 @@ export default async function ReportPage() {
                   </div>
 
                   <div className="text-right">
-                    <Badge tone="muted" title="Not Enough Evidence">
+                    <Badge tone="muted" title={t('report.ne.title')}>
                       NE
                     </Badge>
                   </div>
@@ -147,7 +149,7 @@ export default async function ReportPage() {
               <p className="mt-3 rounded-lg border border-warn-400/40 bg-sunken px-3 py-2 text-[11px] text-body" data-testid="pre-like-incomplete">
                 {t('report.preLike.incomplete', { done: ps50.completedQuestions })}{' '}
                 <Link href="/pre-survey" className="text-brand-400 hover:underline">
-                  pre-survey
+                  {t('report.surveyLink')}
                 </Link>
               </p>
             ) : null}
@@ -167,23 +169,18 @@ export default async function ReportPage() {
 
             {!hasLike && !ps50 ? (
               <p className="mt-3 rounded-lg border border-line bg-sunken px-3 py-2 text-[11px] text-muted">
-                No LIKE values yet — complete the{' '}
+                {t('report.noLike.before')}
                 <Link href="/pre-survey" className="text-brand-400 hover:underline">
-                  pre-survey
-                </Link>{' '}
-                to fill this column.
+                  {t('report.surveyLink')}
+                </Link>
+                {t('report.noLike.after')}
               </p>
             ) : null}
           </div>
 
           <div className="border-t border-line px-5 py-4">
             <p className="text-[11px] leading-relaxed text-muted">
-              <strong className="text-strong">NE = Not Enough Evidence.</strong> SKILL FIT
-              is produced by extracting evidence from your actual work and rating it
-              against behaviourally anchored criteria. That pipeline is not implemented in
-              this build, so nothing is shown rather than something invented. Behaviour
-              counts — time spent, questions asked, resources opened — are never converted
-              into a score on their own.
+              <strong className="text-strong">{t('report.ne.lead')}</strong> {t('report.ne.body')}
             </p>
           </div>
         </Card>
@@ -195,7 +192,7 @@ export default async function ReportPage() {
               <div className="space-y-4 px-5 py-4">
                 {DEPARTMENTS.map((department) => {
                   const role = ps50.roles[department.slug as keyof typeof ps50.roles];
-                  const name = localized.find((d) => d.slug === department.slug)?.name ?? department.name;
+                  const name = nameOf(department.slug);
                   if (!role) return null;
                   return (
                     <div key={department.slug} data-department-breakdown={department.slug}>
@@ -222,33 +219,25 @@ export default async function ReportPage() {
           ) : null}
 
           <Card>
-            <CardHeader title="How to read this" />
+            <CardHeader title={t('report.howTo.title')} />
             <div className="space-y-3 px-5 py-4 text-xs leading-relaxed text-body">
               <p className="rounded-lg border border-line bg-sunken px-3 py-2 text-muted line-through">
-                You are suited for Strategy.
+                {t('report.howTo.wrong')}
               </p>
-              <p>
-                This report does not say that. It says: based on these work experiences,
-                some directions may be worth exploring more deeply — and shows you what you
-                said you liked beforehand, next to what you actually did.
-              </p>
-              <p className="text-muted">
-                Liking a kind of work and being good at it are different questions. Keeping
-                them apart is the point.
-              </p>
+              <p>{t('report.howTo.p1')}</p>
+              <p className="text-muted">{t('report.howTo.p2')}</p>
             </div>
           </Card>
 
           <Card>
-            <CardHeader title="Your bootcamps" />
+            <CardHeader title={t('report.bootcamps.title')} />
             <div className="px-5 py-4">
               {sessions.length === 0 ? (
                 <EmptyState icon="🧭">
-                  No bootcamps yet.{' '}
+                  {t('report.bootcamps.empty')}{' '}
                   <Link href="/office?select=1" className="text-brand-400 hover:underline">
-                    Choose a department
+                    {t('report.bootcamps.choose')}
                   </Link>
-                  .
                 </EmptyState>
               ) : (
                 <ul className="space-y-2">
@@ -258,14 +247,13 @@ export default async function ReportPage() {
                         href={`/office?session=${session.id}`}
                         className="text-xs text-strong underline-offset-4 transition-colors hover:text-strong hover:underline"
                       >
-                        {DEPARTMENTS.find((d) => d.slug === session.departmentSlug)?.name ??
-                          session.departmentSlug}
+                        {nameOf(session.departmentSlug)}
                       </Link>
                       <Badge
                         tone={session.status === 'completed' ? 'success' : 'brand'}
                         dot
                       >
-                        {session.status.replace('_', ' ')}
+                        {t(`sessionStatus.${session.status}` as MessageKey)}
                       </Badge>
                     </li>
                   ))}
@@ -275,8 +263,7 @@ export default async function ReportPage() {
           </Card>
 
           <p className="px-1 text-[11px] leading-relaxed text-subtle">
-            The post-survey that completes the LIKE side is not built yet, and the
-            evaluator that fills SKILL FIT is the next milestone.
+            {t('report.footer')}
           </p>
         </div>
       </div>

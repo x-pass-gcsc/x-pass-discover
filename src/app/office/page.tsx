@@ -54,8 +54,10 @@ export default async function OfficePage({
       wide
       right={
         <RuntimeBadges
+          persistence={runtime.persistence}
           persistenceLabel={runtime.persistenceLabel}
           persistenceIsEphemeral={runtime.persistenceIsEphemeral}
+          ai={runtime.ai}
           aiLabel={runtime.aiLabel}
           aiModeDowngraded={runtime.aiModeDowngraded}
         />

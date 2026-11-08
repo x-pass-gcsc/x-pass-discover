@@ -14,6 +14,8 @@ import { SALES_RESOURCES } from './sales/resources';
 import { SALES_RESOURCE_TRANSLATIONS } from './sales/resources.i18n';
 import { HR_SCENARIO } from './hr/scenario';
 import { HR_RESOURCES } from './hr/resources';
+import { HR_RESOURCE_TRANSLATIONS } from './hr/resources.i18n';
+import { HR_SCENARIO_TRANSLATIONS } from './hr/scenario.i18n';
 
 /**
  * Public scenario content registry (client-safe).
@@ -47,6 +49,10 @@ export const TRANSLATIONS_BY_SCENARIO: Record<
   'sales-quickmart': {
     scenario: SALES_SCENARIO_TRANSLATIONS,
     resources: SALES_RESOURCE_TRANSLATIONS,
+  },
+  'hr-cn-expansion': {
+    scenario: HR_SCENARIO_TRANSLATIONS,
+    resources: HR_RESOURCE_TRANSLATIONS,
   },
 };
 

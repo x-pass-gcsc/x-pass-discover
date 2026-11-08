@@ -346,7 +346,7 @@ function TopBar({ account }: { account: ReactNode }) {
         X-PASS Discover
       </Link>
       <div className="flex items-center gap-1 sm:gap-4">
-        <nav className="hidden items-center gap-4 sm:flex" aria-label="Main">
+        <nav className="hidden items-center gap-4 sm:flex" aria-label={t('survey.navMain')}>
           {links.map((link) => (
             <Link
               key={link.href}
@@ -376,7 +376,7 @@ function SideNav() {
   ];
   return (
     <aside className="relative z-10 hidden w-48 shrink-0 flex-col justify-between bg-[#1d2433] py-4 text-white md:flex">
-      <nav className="space-y-1 px-2" aria-label="Onboarding">
+      <nav className="space-y-1 px-2" aria-label={t('survey.navOnboarding')}>
         {items.map((item) => (
           <Link
             key={item.href}
