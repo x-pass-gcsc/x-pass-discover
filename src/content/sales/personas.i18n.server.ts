@@ -39,4 +39,31 @@ export const SALES_PERSONA_TRANSLATIONS: Translations<Record<string, PersonaText
       },
     },
   },
+  ko: {
+    'quickmart-buyer': {
+      role: '음료 카테고리 바이어',
+      visibleContext:
+        'Yuki Tanaka 씨가 책임지는 것은 특정 공급사가 아니라 QuickMart 음료 진열대 전체의 수익성입니다. 진열 공간은 한정되어 있어서, BITE를 들이려면 아마 다른 상품을 빼야 합니다.',
+      openingMessage:
+        '와 주셔서 감사합니다. 솔직하게 말씀드리겠습니다. 저희는 이미 프로틴 음료를 여러 종류 취급하고 있고 냉장 진열대는 꽉 차 있습니다. BITE를 들인다면 아마 다른 상품을 빼야 할 겁니다. 그러니 왜 그 자리를 BITE에 맡겨야 하는지 설명해 주시겠어요?',
+      factLabels: {
+        morning_velocity: '아침 판매 속도',
+        price_conversion: '가격과 구매 전환',
+        shelf_space: '진열 공간 / 페이스 수',
+        new_product_waste: '신제품 폐기 리스크',
+        pilot_preference: '선호하는 파일럿 구성',
+        expansion_threshold: '확대 기준',
+      },
+    },
+    'bite-sales-manager': {
+      role: '유통 영업 매니저',
+      visibleContext:
+        'BITE 유통 영업팀에서 나의 매니저입니다. 미션을 맡기고 BITE의 제약에 대해 설명해 주지만, 거래처 공략은 스스로 해내기를 기대합니다.',
+      openingMessage:
+        '마침 잘 왔어요. 맡기고 싶은 건 QuickMart예요. 매장이 약 1,200개이고, 건강 음료를 적극적으로 키우려 하고 있어요. 미션은 BITE Protein Drink를 우리가 정말 받아들일 수 있는 조건으로 입점시키는 거예요. BITE에 대해서는 뭐든 물어봐요. 하지만 QuickMart에 대해서는 직접 알아내야 해요.',
+      factLabels: {
+        bite_production_capacity: '초기 생산 능력',
+      },
+    },
+  },
 };

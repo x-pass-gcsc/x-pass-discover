@@ -134,8 +134,10 @@ export function WorkspaceClient({
             <DeadlineCountdown deadlineAt={view.session.deadlineAt} />
           </div>
           <RuntimeBadges
+            persistence={view.runtime.persistence}
             persistenceLabel={view.runtime.persistenceLabel}
             persistenceIsEphemeral={view.runtime.persistenceIsEphemeral}
+            ai={view.runtime.ai}
             aiLabel={view.runtime.aiLabel}
             aiModeDowngraded={view.runtime.aiModeDowngraded}
           />

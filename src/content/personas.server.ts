@@ -4,6 +4,7 @@ import type { PersonaDefinition } from '@/types/persona';
 import type { PublicPersona } from '@/types/ai';
 import type { Translations } from './localize';
 import { SALES_PERSONAS } from './sales/personas.server';
+import { HR_PERSONA_TRANSLATIONS } from './hr/personas.i18n.server';
 import { SALES_PERSONA_TRANSLATIONS } from './sales/personas.i18n.server';
 import { HR_PERSONAS } from './hr/personas.server';
 
@@ -40,6 +41,7 @@ export const PERSONA_TRANSLATIONS_BY_SCENARIO: Record<
   Translations<Record<string, PersonaText>>
 > = {
   'sales-quickmart': SALES_PERSONA_TRANSLATIONS,
+  'hr-cn-expansion': HR_PERSONA_TRANSLATIONS,
 };
 
 /** A persona with its client-facing text in the student's language. */

@@ -1,3 +1,6 @@
+'use client';
+
+import { useT } from '@/i18n/client';
 import { Badge } from './ui';
 
 /**
@@ -6,7 +9,8 @@ import { Badge } from './ui';
  * These live apart from `AppShell` on purpose: the shell resolves the current
  * user and therefore pulls in `server-only`, while the wordmark and the runtime
  * badges are rendered inside client components too. Keeping them in separate
- * modules is what stops a client bundle from reaching the session code.
+ * modules is what stops a client bundle from reaching the session code. It is a
+ * client module so the runtime badges can speak the student's language.
  */
 
 export function Logo({ size = 'md' }: { size?: 'sm' | 'md' }) {
@@ -26,36 +30,42 @@ export function Logo({ size = 'md' }: { size?: 'sm' | 'md' }) {
 }
 
 export function RuntimeBadges({
+  persistence,
   persistenceLabel,
   persistenceIsEphemeral,
+  ai,
   aiLabel,
   aiModeDowngraded,
 }: {
+  /** `neon` / `file` / `memory`; the label is the English fallback. */
+  persistence?: string;
   persistenceLabel: string;
   persistenceIsEphemeral?: boolean;
+  /** `openai` / `mock`; an OpenAI label keeps its model name as written. */
+  ai?: string;
   aiLabel: string;
   aiModeDowngraded?: boolean;
 }) {
+  const t = useT();
+  const persistenceText =
+    persistence === 'memory'
+      ? t('runtime.memory')
+      : persistence === 'file'
+        ? t('runtime.file')
+        : persistenceLabel;
+  const aiText = ai === 'mock' ? t('runtime.mock') : aiLabel;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Badge
         tone={persistenceIsEphemeral ? 'warn' : 'muted'}
         dot
-        title={
-          persistenceIsEphemeral
-            ? 'No DATABASE_URL: work is held in memory and lost on restart'
-            : 'Where runtime state is being written'
-        }
+        title={persistenceIsEphemeral ? t('runtime.ephemeralTitle') : t('runtime.persistenceTitle')}
       >
-        {persistenceLabel}
+        {persistenceText}
       </Badge>
-      <Badge
-        tone={aiModeDowngraded ? 'warn' : 'muted'}
-        dot
-        title="Which AI adapter is live"
-      >
-        {aiLabel}
-        {aiModeDowngraded ? ' — key missing' : ''}
+      <Badge tone={aiModeDowngraded ? 'warn' : 'muted'} dot title={t('runtime.aiTitle')}>
+        {aiText}
+        {aiModeDowngraded ? t('runtime.keyMissing') : ''}
       </Badge>
     </div>
   );

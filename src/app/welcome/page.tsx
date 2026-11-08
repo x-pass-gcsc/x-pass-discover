@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { HeroBanner } from '@/components/media';
 import { Badge, Button, Card, CardHeader } from '@/components/ui';
-import { BITE_COMPANY } from '@/content/company';
 import { MEDIA } from '@/content/media';
 import { getT } from '@/i18n/server';
 import { getCurrentUser } from '@/lib/auth/session';
@@ -17,11 +16,11 @@ export default async function WelcomePage() {
     <AppShell title={t('welcome.title')} subtitle={t('welcome.signedInAs', { name: user.displayName })}>
       <HeroBanner
         src={MEDIA.companyOffice.src}
-        alt={MEDIA.companyOffice.alt}
+        alt={t('media.companyOffice')}
         height="h-52"
         eyebrow={<Badge tone="brand" dot>{t('welcome.badge')}</Badge>}
         title={t('welcome.heroTitle')}
-        description={BITE_COMPANY.profile}
+        description={t('company.profile')}
       />
 
       <div className="mt-5 grid items-start gap-5 lg:grid-cols-[1.4fr_1fr]">
