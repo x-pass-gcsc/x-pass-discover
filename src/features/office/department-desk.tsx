@@ -89,9 +89,9 @@ export function DepartmentDesk({
         <div className="p-3 sm:p-5">
           <p className="mb-3 text-xs text-muted sm:hidden">{t('desk.subtitle')}</p>
           <DepartmentChooser
-            variant="desk"
             departments={desk.departments}
-            initialSelection={desk.selection}
+            plan={desk.plan}
+            preSurveyComplete={desk.preSurveyComplete}
             sessions={desk.sessions}
             currentSessionId={currentSessionId}
             onOpenSession={onOpenSession}

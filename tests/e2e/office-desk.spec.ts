@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import {
   completePreSurvey,
+  surveyAnswers,
   officeDepartment,
   openDesk,
   openWorkWindow,
@@ -41,78 +42,149 @@ test('after the pre-survey a new student goes to the reception desk in the offic
   await expect(page.getByTestId('department-desk')).toBeVisible();
 });
 
-test('the desk shows the five departments, and only Sales and HR can start', async ({ page }) => {
+test('the desk shows all five departments, and nothing starts before the plan is confirmed', async ({ page }) => {
   await signUpAsNewStudent(page, 'Desk Reader');
   await page.goto('/office');
+  await openDesk(page, 'sales');
 
   for (const slug of ['sales', 'human-resources']) {
-    const card = await openDesk(page, slug);
-    await expect(card).toHaveAttribute('data-department-status', 'playable');
-    await expect(card.getByRole('button', { name: 'Start bootcamp' })).toBeVisible();
+    await expect(page.locator(`[data-department-slug="${slug}"]`)).toHaveAttribute('data-department-status', 'playable');
   }
   for (const slug of ['marketing', 'product-management', 'strategy']) {
     const card = page.locator(`[data-department-slug="${slug}"]`);
     await expect(card).toHaveAttribute('data-department-status', 'coming_soon');
     await expect(card).toContainText('Coming soon');
-    await expect(card.getByRole('button', { name: /Start bootcamp|Resume bootcamp|Continue/ })).toHaveCount(0);
   }
+  // Choosing comes first: no department offers to start yet.
+  await expect(page.getByRole('button', { name: /Start bootcamp/ })).toHaveCount(0);
+  // Without a pre-survey, no recommendation can be made.
+  await expect(page.getByTestId('plan-survey-first')).toBeVisible();
 
-  // A department that is not playable cannot be started by asking directly either.
-  const refused = await page.request.post('/api/sessions', { data: { departmentSlug: 'marketing' } });
-  expect(refused.ok()).toBe(false);
+  // And not over the API either.
+  const unconfirmed = await page.request.post('/api/sessions', { data: { departmentSlug: 'sales' } });
+  expect(unconfirmed.status()).toBe(400);
+  expect((await unconfirmed.json()).code).toBe('plan_not_confirmed');
 
-  // Escape closes the desk.
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('department-desk')).toHaveCount(0);
 });
 
-test('no more than three departments can be selected', async ({ page }) => {
-  await signUpAsNewStudent(page, 'Picky Student');
+test('two are chosen, one is recommended, and the three are confirmed', async ({ page }) => {
+  await signUpAsNewStudent(page, 'Plan Maker');
+  expect((await page.request.post('/api/pre-survey', { data: { answers: surveyAnswers(4) } })).ok()).toBe(true);
   await page.goto('/office');
   await openDesk(page, 'sales');
 
-  const pick = (slug: string) =>
-    page.locator(`[data-department-slug="${slug}"] button[aria-pressed]`);
-  for (const slug of ['sales', 'human-resources', 'marketing', 'strategy']) {
-    await pick(slug).click();
-  }
-  await expect(page.getByText('Three is the limit')).toBeVisible();
-  await expect(page.locator('[data-department-slug] button[aria-pressed="true"]')).toHaveCount(3);
+  const pick = (slug: string) => page.locator(`[data-department-slug="${slug}"] button[aria-pressed]`);
+  const next = page.getByTestId('plan-see-recommendation');
+
+  // One is not enough.
+  await pick('sales').click();
+  await expect(page.getByTestId('plan-count')).toContainText('1/2');
+  await expect(next).toBeDisabled();
+
+  // Two is; a third cannot be chosen.
+  await pick('marketing').click();
+  await expect(next).toBeEnabled();
+  await pick('strategy').click();
+  await expect(page.getByText('Two is the limit')).toBeVisible();
+  await expect(page.locator('[data-department-slug] button[aria-pressed="true"]')).toHaveCount(2);
   await expect(pick('strategy')).toHaveAttribute('aria-pressed', 'false');
 
-  await page.getByRole('button', { name: 'Save selection' }).click();
-  await expect(page.getByText('Selection saved')).toBeVisible();
+  // B: the recommendation is one of the other three, and nothing is scored.
+  await next.click();
+  const recommendation = page.getByTestId('plan-recommendation');
+  await expect(recommendation).toBeVisible();
+  const recommended = (await recommendation.getAttribute('data-recommended')) ?? '';
+  expect(['product-management', 'strategy', 'human-resources']).toContain(recommended);
+  await expect(recommendation).toContainText('AI Recommendation');
+  await expect(page.getByTestId('department-desk')).not.toContainText(/Pre-LIKE|\d+ out of 100/);
 
-  // The API holds the same line.
-  const tooMany = await page.request.post('/api/departments/selection', {
-    data: { departmentSlugs: ['sales', 'human-resources', 'marketing', 'strategy'] },
-  });
-  expect(tooMany.ok()).toBe(false);
+  // C: the three, then confirm.
+  await page.getByTestId('plan-review').click();
+  const review = page.getByTestId('plan-review-three');
+  await expect(review.locator('[data-plan-row="chosen"]')).toHaveCount(2);
+  await expect(review.locator('[data-plan-row="recommended"]')).toHaveCount(1);
+  await expect(review.locator('[data-plan-row="recommended"]')).toHaveAttribute('data-department-slug', recommended);
+  // Marketing (chosen) has no job experience yet, and the desk says so.
+  await expect(page.getByTestId('plan-coming-soon-note')).toContainText('Marketing');
+  await page.getByTestId('plan-confirm').click();
+
+  const plan = page.getByTestId('department-plan');
+  await expect(plan).toHaveAttribute('data-plan-state', 'confirmed');
+  await expect(plan.locator('[data-plan-role="chosen"]')).toHaveCount(2);
+  await expect(plan.locator('[data-plan-role="recommended"]')).toHaveAttribute('data-department-slug', recommended);
+  // Only Sales can start; Marketing (and the recommendation, unless it is HR)
+  // waits for its scenario — and no session or completion is made up for it.
+  await expect(page.locator('[data-department-slug="sales"]').getByRole('button', { name: 'Start bootcamp' })).toBeVisible();
+  await expect(page.locator('[data-department-slug="marketing"]')).toContainText('coming soon');
+  await expect(page.locator('[data-department-slug="marketing"]')).toHaveAttribute('data-department-session', 'none');
+
+  // A reload keeps the confirmed plan.
+  await page.goto('/office?select=1');
+  await expect(page.getByTestId('department-plan')).toHaveAttribute('data-plan-state', 'confirmed');
+  await expect(page.locator('[data-plan-role="recommended"]')).toHaveAttribute('data-department-slug', recommended);
+
+  // The report stays locked: one plan, nothing completed, no post-survey.
+  await page.goto('/report');
+  await expect(page.getByTestId('report-locked')).toBeVisible();
+  await expect(page.locator('[data-report-step="departments"]')).toContainText('0/3');
 });
 
-test('starting a bootcamp counts as choosing its department, within the three', async ({ page }) => {
-  await signUpAsNewStudent(page, 'Full Hands');
-  await page.goto('/office');
+test('the plan rules hold over the API', async ({ page }) => {
+  await signUpAsNewStudent(page, 'Rule Tester');
+  const recommend = (userChosenSlugs: unknown) =>
+    page.request.post('/api/departments/recommendation', { data: { userChosenSlugs } });
+  const confirm = (userChosenSlugs: unknown, aiRecommendedSlug: unknown) =>
+    page.request.post('/api/departments/selection', { data: { userChosenSlugs, aiRecommendedSlug } });
 
-  // Three other departments already chosen: a fourth cannot be started.
-  const chose = await page.request.post('/api/departments/selection', {
-    data: { departmentSlugs: ['marketing', 'strategy', 'product-management'] },
-  });
-  expect(chose.ok()).toBe(true);
-  expect((await page.request.post('/api/sessions', { data: { departmentSlug: 'sales' } })).ok()).toBe(false);
-  await page.reload();
-  const card = await openDesk(page, 'sales');
-  await card.getByRole('button', { name: 'Start bootcamp' }).click();
-  await expect(page.getByText('Three is the limit')).toBeVisible();
-  await expect(page.getByTestId('department-desk')).toBeVisible();
+  // No pre-survey: no recommendation, no confirmation.
+  const response = await recommend(['sales', 'marketing']);
+  expect(response.status()).toBe(400);
+  expect((await response.json()).code).toBe('pre_survey_incomplete');
+  expect((await confirm(['sales', 'marketing'], 'strategy')).status()).toBe(400);
 
-  // With room left, starting Sales adds it to the selection.
-  await page.request.post('/api/departments/selection', { data: { departmentSlugs: ['marketing'] } });
-  await startBootcamp(page, 'sales');
-  await page.getByTestId('close-work').click();
-  await openDesk(page, 'sales');
-  await expect(page.locator('[data-department-slug="sales"] button[aria-pressed]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('[data-department-slug="marketing"] button[aria-pressed]')).toHaveAttribute('aria-pressed', 'true');
+  expect((await page.request.post('/api/pre-survey', { data: { answers: surveyAnswers(3) } })).ok()).toBe(true);
+
+  // Exactly two different, known departments.
+  for (const bad of [['sales'], ['sales', 'sales'], ['sales', 'marketing', 'strategy'], ['sales', 'finance']]) {
+    expect((await recommend(bad)).status(), `${bad} should be refused`).toBe(400);
+  }
+
+  // The same answers and choices give the same recommendation.
+  const first = (await (await recommend(['sales', 'human-resources'])).json()).aiRecommendedSlug;
+  const second = (await (await recommend(['sales', 'human-resources'])).json()).aiRecommendedSlug;
+  expect(first).toBe(second);
+  expect(['marketing', 'strategy', 'product-management']).toContain(first);
+  // Only the slug comes back — no scores.
+  expect(Object.keys(await (await recommend(['sales', 'human-resources'])).json())).toEqual(['aiRecommendedSlug']);
+
+  // A third department other than the recommendation cannot be slipped in.
+  const other = ['marketing', 'strategy', 'product-management'].find((slug) => slug !== first)!;
+  for (const tampered of [other, 'sales', 'finance']) {
+    const refused = await confirm(['sales', 'human-resources'], tampered);
+    expect(refused.status(), `${tampered} should be refused`).toBe(400);
+  }
+  expect((await confirm(['sales', 'human-resources', first], first)).status()).toBe(400);
+
+  // The right one confirms, once.
+  expect((await confirm(['sales', 'human-resources'], first)).ok()).toBe(true);
+  const again = await confirm(['marketing', 'strategy'], 'sales');
+  expect(again.status()).toBe(400);
+  expect((await again.json()).code).toBe('already_confirmed');
+
+  // New bootcamps only inside the plan, and only where a scenario exists.
+  const outside = await page.request.post('/api/sessions', { data: { departmentSlug: other } });
+  expect(outside.status()).toBe(400);
+  expect((await outside.json()).code).toBe('not_in_plan');
+  const unplayable = await page.request.post('/api/sessions', { data: { departmentSlug: first } });
+  expect(unplayable.status(), 'a coming-soon department gets no session').toBe(400);
+  expect((await unplayable.json()).code).toBe('not_playable');
+  expect((await page.request.post('/api/sessions', { data: { departmentSlug: 'sales' } })).ok()).toBe(true);
+
+  // The report is still locked.
+  await page.goto('/report');
+  await expect(page.getByTestId('report-locked')).toBeVisible();
 });
 
 test('switching department keeps every bootcamp and its progress', async ({ page }) => {
@@ -173,17 +245,21 @@ test('the old departments address opens the desk in the office', async ({ page }
 
 test('the desk follows the language', async ({ page, context }) => {
   await signUpAsNewStudent(page, 'Polyglot');
-  for (const [locale, title, start] of [
-    ['ko', 'BITE 리셉션', '부트캠프 시작'],
-    ['ja', 'BITE 受付', 'ブートキャンプを始める'],
-    ['en', 'BITE Reception', 'Start bootcamp'],
+  expect((await page.request.post('/api/pre-survey', { data: { answers: surveyAnswers(4) } })).ok()).toBe(true);
+  for (const [locale, title, next, aiBadge] of [
+    ['ko', 'BITE 리셉션', '추천 부서 보기', 'AI 추천'],
+    ['ja', 'BITE 受付', 'おすすめを見る', 'AI のおすすめ'],
+    ['en', 'BITE Reception', 'See my recommendation', 'AI Recommendation'],
   ] as const) {
     await context.addCookies([{ name: 'xpass-locale', value: locale, url: page.url() }]);
     await page.goto('/office?select=1');
     const desk = page.getByTestId('department-desk');
     await expect(desk).toContainText(title);
-    await expect(
-      desk.locator('[data-department-slug="sales"]').getByRole('button', { name: start }),
-    ).toBeVisible();
+    await expect(desk.getByRole('button', { name: next })).toBeVisible();
+    // Choose two and see the recommendation, labelled in the language.
+    await desk.locator('[data-department-slug="sales"] button[aria-pressed]').click();
+    await desk.locator('[data-department-slug="human-resources"] button[aria-pressed]').click();
+    await desk.getByRole('button', { name: next }).click();
+    await expect(desk.getByTestId('plan-recommendation')).toContainText(aiBadge);
   }
 });

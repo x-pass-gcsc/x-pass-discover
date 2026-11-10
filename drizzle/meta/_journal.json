@@ -15,6 +15,13 @@
       "when": 1792853385302,
       "tag": "0001_user_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794276814191,
+      "tag": "0002_department_plan",
+      "breakpoints": true
     }
   ]
 }

@@ -194,6 +194,32 @@ async function main() {
 
   await repo.saveDepartmentSelection(user.id, ['sales', 'strategy']);
   check('department selection upsert', (await repo.getDepartmentSelection(user.id))?.departmentSlugs.length === 2);
+  check('a pre-2+1 selection is not confirmed', !(await repo.getDepartmentSelection(user.id))?.confirmedAt);
+
+  // The 2+1 plan: confirmed once, over the earlier selection, never twice.
+  const confirmedPlan = await repo.confirmDepartmentPlan(user.id, {
+    userChosenSlugs: ['sales', 'human-resources'],
+    aiRecommendedSlug: 'strategy',
+    recommendationVersion: 'recommendation-v1',
+    recommendation: { note: 'verify-postgres' },
+  });
+  check(
+    'department plan confirms',
+    !!confirmedPlan?.confirmedAt &&
+      confirmedPlan.departmentSlugs.join() === 'sales,human-resources,strategy' &&
+      confirmedPlan.aiRecommendedSlug === 'strategy',
+  );
+  const secondPlan = await repo.confirmDepartmentPlan(user.id, {
+    userChosenSlugs: ['marketing', 'strategy'],
+    aiRecommendedSlug: 'sales',
+    recommendationVersion: 'recommendation-v1',
+    recommendation: {},
+  });
+  const afterSecond = await repo.getDepartmentSelection(user.id);
+  check(
+    'a confirmed plan is not replaced',
+    secondPlan === null && afterSecond?.departmentSlugs.join() === 'sales,human-resources,strategy',
+  );
 
   const { startSession, loadSessionView } = await import(
     '@/services/scenario/session-service'

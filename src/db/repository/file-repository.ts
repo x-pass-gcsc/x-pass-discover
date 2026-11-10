@@ -8,6 +8,7 @@ import type {
   AiConversation,
   AiMessage,
   BehaviorEvent,
+  ConfirmDepartmentPlanInput,
   DepartmentSelection,
   PreSurvey,
   ProjectSession,
@@ -228,6 +229,27 @@ export class FileRepository implements XPassRepository {
     return this.read(
       (d) => d.departmentSelections.find((s) => s.userId === userId) ?? null,
     );
+  }
+
+  async confirmDepartmentPlan(userId: string, plan: ConfirmDepartmentPlanInput) {
+    return this.mutate((d) => {
+      const idx = d.departmentSelections.findIndex((s) => s.userId === userId);
+      if (idx >= 0 && d.departmentSelections[idx].confirmedAt) return null;
+      const at = now();
+      const record: DepartmentSelection = {
+        userId,
+        departmentSlugs: [...plan.userChosenSlugs, plan.aiRecommendedSlug],
+        selectedAt: at,
+        userChosenSlugs: plan.userChosenSlugs,
+        aiRecommendedSlug: plan.aiRecommendedSlug,
+        recommendationVersion: plan.recommendationVersion,
+        recommendation: plan.recommendation,
+        confirmedAt: at,
+      };
+      if (idx >= 0) d.departmentSelections[idx] = record;
+      else d.departmentSelections.push(record);
+      return record;
+    });
   }
 
   // --- sessions -----------------------------------------------------------

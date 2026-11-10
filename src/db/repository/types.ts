@@ -4,6 +4,7 @@ import type {
   AnswerValue,
   BehaviorEvent,
   BehaviorEventType,
+  ConfirmDepartmentPlanInput,
   DepartmentSelection,
   PreSurvey,
   ProjectSession,
@@ -81,11 +82,23 @@ export interface XPassRepository {
   // --- onboarding ---------------------------------------------------------
   savePreSurvey(userId: string, answers: Record<string, unknown>): Promise<PreSurvey>;
   getPreSurvey(userId: string): Promise<PreSurvey | null>;
+  /**
+   * The pre-2+1 free pick of up to three departments. Kept for the records it
+   * wrote; the app now confirms a plan with `confirmDepartmentPlan` instead.
+   */
   saveDepartmentSelection(
     userId: string,
     departmentSlugs: string[],
   ): Promise<DepartmentSelection>;
   getDepartmentSelection(userId: string): Promise<DepartmentSelection | null>;
+  /**
+   * Saves a confirmed 2+1 plan — only if the student has not confirmed one
+   * already, checked in the same write. Null when one was already confirmed.
+   */
+  confirmDepartmentPlan(
+    userId: string,
+    plan: ConfirmDepartmentPlanInput,
+  ): Promise<DepartmentSelection | null>;
 
   // --- sessions -----------------------------------------------------------
   createSession(input: CreateSessionInput): Promise<ProjectSession>;

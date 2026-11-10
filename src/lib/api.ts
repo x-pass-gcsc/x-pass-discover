@@ -50,7 +50,7 @@ export async function withUser<T>(
     if (error instanceof ScenarioRuleError) {
       // The engine said no on purpose — one line, no stack trace.
       console.warn('[api] rejected:', error.message);
-      return jsonError(error.message, 400);
+      return jsonError(error.message, 400, error.code);
     }
     return faultResponse(error, 'Something went wrong. Please try again.');
   }

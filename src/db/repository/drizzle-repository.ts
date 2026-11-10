@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, desc, eq, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
 import { requireDb, schema, type Database } from '@/db/client';
 import { SetupRequiredError } from '@/lib/errors';
 import { deepEquals } from '@/lib/stable-json';
@@ -8,6 +8,7 @@ import type {
   AiMessage,
   BehaviorEvent,
   BehaviorEventType,
+  ConfirmDepartmentPlanInput,
   DepartmentSelection,
   PreSurvey,
   ProjectSession,
@@ -27,6 +28,19 @@ import type {
   SaveAnswerInput,
   XPassRepository,
 } from './types';
+
+function toSelection(row: typeof schema.departmentSelections.$inferSelect): DepartmentSelection {
+  return {
+    userId: row.userId,
+    departmentSlugs: row.departmentSlugs,
+    selectedAt: isoReq(row.selectedAt),
+    userChosenSlugs: row.userChosenSlugs ?? null,
+    aiRecommendedSlug: row.aiRecommendedSlug ?? null,
+    recommendationVersion: row.recommendationVersion ?? null,
+    recommendation: row.recommendation ?? null,
+    confirmedAt: row.confirmedAt ? row.confirmedAt.toISOString() : null,
+  };
+}
 
 const iso = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString() : null;
@@ -170,11 +184,7 @@ export class DrizzleRepository implements XPassRepository {
         set: { departmentSlugs, selectedAt: new Date() },
       })
       .returning();
-    return {
-      userId: row.userId,
-      departmentSlugs: row.departmentSlugs,
-      selectedAt: isoReq(row.selectedAt),
-    } satisfies DepartmentSelection;
+    return toSelection(row);
   }
 
   async getDepartmentSelection(userId: string) {
@@ -183,13 +193,31 @@ export class DrizzleRepository implements XPassRepository {
       .from(schema.departmentSelections)
       .where(eq(schema.departmentSelections.userId, userId))
       .limit(1);
-    return row
-      ? ({
-          userId: row.userId,
-          departmentSlugs: row.departmentSlugs,
-          selectedAt: isoReq(row.selectedAt),
-        } satisfies DepartmentSelection)
-      : null;
+    return row ? toSelection(row) : null;
+  }
+
+  async confirmDepartmentPlan(userId: string, plan: ConfirmDepartmentPlanInput) {
+    const values = {
+      departmentSlugs: [...plan.userChosenSlugs, plan.aiRecommendedSlug],
+      selectedAt: new Date(),
+      userChosenSlugs: plan.userChosenSlugs,
+      aiRecommendedSlug: plan.aiRecommendedSlug,
+      recommendationVersion: plan.recommendationVersion,
+      recommendation: plan.recommendation,
+      confirmedAt: new Date(),
+    };
+    // Only over a row that is not confirmed yet: a second confirmation, or two
+    // racing ones, update nothing and return no row.
+    const [row] = await this.db
+      .insert(schema.departmentSelections)
+      .values({ userId, ...values })
+      .onConflictDoUpdate({
+        target: schema.departmentSelections.userId,
+        set: values,
+        setWhere: isNull(schema.departmentSelections.confirmedAt),
+      })
+      .returning();
+    return row ? toSelection(row) : null;
   }
 
   // --- sessions -----------------------------------------------------------

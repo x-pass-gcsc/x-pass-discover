@@ -9,9 +9,13 @@
  * keeps its full trace.
  */
 export class ScenarioRuleError extends Error {
-  constructor(message: string) {
+  /** Optional machine-readable reason, for a client that reacts to it. */
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
     super(message);
     this.name = 'ScenarioRuleError';
+    this.code = code;
   }
 }
 

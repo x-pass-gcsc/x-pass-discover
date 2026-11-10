@@ -13,6 +13,7 @@ import { DEFAULT_LOCALE, type Locale } from '@/i18n/config';
 import { DICTIONARIES, translator } from '@/i18n/translate';
 import { env, runtimeModeSummary } from '@/lib/env';
 import { ScenarioRuleError } from '@/lib/errors';
+import { assertCanStartDepartment } from '@/services/departments/plan-service';
 import { logEvent } from '@/services/events';
 import type { ProjectSession, StepStatus, TaskAnswer } from '@/types/runtime';
 import type { ScenarioVersionDefinition } from '@/types/scenario';
@@ -335,8 +336,6 @@ export async function markStepStarted(
 
 // ------------------------------------------------------------ session create
 
-/** A student explores at most this many departments. */
-export const MAX_DEPARTMENTS = 3;
 
 export async function startSession(
   userId: string,
@@ -348,23 +347,18 @@ export async function startSession(
   if (!department) {
     throw new ScenarioRuleError(`Unknown department: ${departmentSlug}`);
   }
-  if (department.status !== 'playable' || !department.scenarioKey) {
-    throw new ScenarioRuleError(`${department.name} is not playable yet.`);
-  }
 
+  // A bootcamp already under way is always resumed, whatever the plan says —
+  // including one started before the 2+1 plan existed.
   const existing = await repo.findActiveSession(userId, departmentSlug);
   if (existing) return existing;
 
-  // Starting a bootcamp chooses its department: it joins the student's
-  // selection, which holds at most three.
-  const selection = (await repo.getDepartmentSelection(userId))?.departmentSlugs ?? [];
-  if (!selection.includes(departmentSlug)) {
-    if (selection.length >= MAX_DEPARTMENTS) {
-      throw new ScenarioRuleError(
-        `You have already chosen ${MAX_DEPARTMENTS} departments. Deselect one before starting ${department.name}.`,
-      );
-    }
-    await repo.saveDepartmentSelection(userId, [...selection, departmentSlug]);
+  // A new one starts only in a department of the student's confirmed plan
+  // (the plan itself is never changed here), and only where a scenario
+  // exists — read from the department, so one added later just starts.
+  await assertCanStartDepartment(userId, departmentSlug);
+  if (department.status !== 'playable' || !department.scenarioKey) {
+    throw new ScenarioRuleError(`${department.name} is not playable yet.`, 'not_playable');
   }
 
   const scenario = getPublishedScenario(department.scenarioKey);

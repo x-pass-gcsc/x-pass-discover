@@ -1,25 +1,24 @@
 import { z } from 'zod';
-import { getRepository } from '@/db/repository';
-import { DEPARTMENTS } from '@/content/departments';
 import { parseBody, withUser } from '@/lib/api';
+import { confirmDepartmentPlan } from '@/services/departments/plan-service';
 
-const validSlugs = DEPARTMENTS.map((d) => d.slug) as [string, ...string[]];
-
-const schema = z.object({
-  departmentSlugs: z
-    .array(z.enum(validSlugs))
-    .min(1, 'select at least one department')
-    .max(3, 'select at most three departments'),
-});
+/**
+ * Confirms the student's 2+1 department plan: the two departments they chose,
+ * and the recommendation they were shown. The server recomputes the
+ * recommendation and refuses the request if it differs, so the third
+ * department can never be set by the client. A plan is confirmed once.
+ */
+const schema = z
+  .object({
+    userChosenSlugs: z.array(z.string().trim().min(1)).length(2, 'choose exactly two departments'),
+    aiRecommendedSlug: z.string().trim().min(1),
+  })
+  .strict();
 
 export async function POST(request: Request) {
   return withUser(async (user) => {
-    const { departmentSlugs } = await parseBody(request, schema);
-    const unique = Array.from(new Set(departmentSlugs));
-    const selection = await getRepository().saveDepartmentSelection(
-      user.id,
-      unique,
-    );
-    return { selection };
+    const { userChosenSlugs, aiRecommendedSlug } = await parseBody(request, schema);
+    const plan = await confirmDepartmentPlan(user.id, userChosenSlugs, aiRecommendedSlug);
+    return { plan };
   });
 }
