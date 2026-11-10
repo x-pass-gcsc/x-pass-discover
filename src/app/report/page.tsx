@@ -10,6 +10,8 @@ import { PreLikeAreas } from '@/features/survey/pre-like-areas';
 import type { MessageKey } from '@/i18n/messages/en';
 import { getLocale, getT } from '@/i18n/server';
 import { getCurrentUser } from '@/lib/auth/session';
+import { ReportLocked } from '@/features/report/report-locked';
+import { getReportAccess } from '@/services/report/report-access';
 
 /**
  * Career report.
@@ -25,10 +27,32 @@ import { getCurrentUser } from '@/lib/auth/session';
  * rubric as a 0–100 Pre-LIKE index with three areas per job, shown only once
  * all 50 answers are in. A record from an earlier survey keeps its old 20–100
  * values, labelled as such and never mixed with the new index.
+ *
+ * None of it is shown until the report opens (`getReportAccess`): before
+ * that, the page computes no score at all and shows only what is left to do.
  */
 export default async function ReportPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+
+  const access = await getReportAccess(user.id);
+  if (!access.unlocked) {
+    const [t, locale, sessions] = await Promise.all([
+      getT(),
+      getLocale(),
+      getRepository().listSessionsForUser(user.id),
+    ]);
+    return (
+      <AppShell title={t('report.title')} subtitle={t('report.subtitle')} backHref="/office" backLabel={t('office.title')}>
+        <ReportLocked
+          access={access}
+          departments={listLocalizedDepartments(locale)}
+          sessions={sessions.map((s) => ({ id: s.id, departmentSlug: s.departmentSlug, status: s.status }))}
+          t={t}
+        />
+      </AppShell>
+    );
+  }
 
   const repo = getRepository();
   const [preSurvey, sessions] = await Promise.all([
