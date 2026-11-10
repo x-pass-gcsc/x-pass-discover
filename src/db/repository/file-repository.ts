@@ -8,6 +8,8 @@ import type {
   AiConversation,
   AiMessage,
   BehaviorEvent,
+  CareerPostSurvey,
+  CareerPostSurveyInput,
   ConfirmDepartmentPlanInput,
   DepartmentSelection,
   PreSurvey,
@@ -32,6 +34,7 @@ type FileShape = {
   credentials: UserCredential[];
   preSurveys: PreSurvey[];
   departmentSelections: DepartmentSelection[];
+  careerPostSurveys: CareerPostSurvey[];
   sessions: ProjectSession[];
   stepProgress: StepProgress[];
   answers: TaskAnswer[];
@@ -47,6 +50,7 @@ const EMPTY: FileShape = {
   credentials: [],
   preSurveys: [],
   departmentSelections: [],
+  careerPostSurveys: [],
   sessions: [],
   stepProgress: [],
   answers: [],
@@ -229,6 +233,42 @@ export class FileRepository implements XPassRepository {
     return this.read(
       (d) => d.departmentSelections.find((s) => s.userId === userId) ?? null,
     );
+  }
+
+  async getCareerPostSurvey(userId: string) {
+    return this.read((d) => d.careerPostSurveys.find((s) => s.userId === userId) ?? null);
+  }
+
+  async saveCareerPostSurveyDraft(userId: string, input: CareerPostSurveyInput) {
+    return this.writeCareerPostSurvey(userId, input, 'draft');
+  }
+
+  async submitCareerPostSurvey(userId: string, input: CareerPostSurveyInput) {
+    return this.writeCareerPostSurvey(userId, input, 'submitted');
+  }
+
+  private writeCareerPostSurvey(
+    userId: string,
+    input: CareerPostSurveyInput,
+    status: CareerPostSurvey['status'],
+  ) {
+    return this.mutate((d) => {
+      const idx = d.careerPostSurveys.findIndex((s) => s.userId === userId);
+      const existing = idx >= 0 ? d.careerPostSurveys[idx] : null;
+      if (existing?.status === 'submitted') return null;
+      const at = now();
+      const record: CareerPostSurvey = {
+        userId,
+        ...input,
+        status,
+        createdAt: existing?.createdAt ?? at,
+        updatedAt: at,
+        submittedAt: status === 'submitted' ? at : null,
+      };
+      if (idx >= 0) d.careerPostSurveys[idx] = record;
+      else d.careerPostSurveys.push(record);
+      return record;
+    });
   }
 
   async confirmDepartmentPlan(userId: string, plan: ConfirmDepartmentPlanInput) {

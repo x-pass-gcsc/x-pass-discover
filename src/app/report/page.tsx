@@ -10,6 +10,7 @@ import { PreLikeAreas } from '@/features/survey/pre-like-areas';
 import type { MessageKey } from '@/i18n/messages/en';
 import { getLocale, getT } from '@/i18n/server';
 import { getCurrentUser } from '@/lib/auth/session';
+import { PostSurveySummary } from '@/features/report/post-survey-summary';
 import { ReportLocked } from '@/features/report/report-locked';
 import { getReportAccess } from '@/services/report/report-access';
 
@@ -55,9 +56,10 @@ export default async function ReportPage() {
   }
 
   const repo = getRepository();
-  const [preSurvey, sessions] = await Promise.all([
+  const [preSurvey, sessions, postSurvey] = await Promise.all([
     repo.getPreSurvey(user.id),
     repo.listSessionsForUser(user.id),
+    repo.getCareerPostSurvey(user.id),
   ]);
 
   const completedSlugs = new Set(
@@ -210,6 +212,9 @@ export default async function ReportPage() {
         </Card>
 
         <div className="space-y-5">
+          {postSurvey?.status === 'submitted' ? (
+            <PostSurveySummary survey={postSurvey} nameOf={nameOf} t={t} />
+          ) : null}
           {ps50?.complete ? (
             <Card data-testid="pre-like-breakdown">
               <CardHeader title={t('report.preLike.title')} subtitle={t('report.preLike.subtitle')} />

@@ -154,6 +154,26 @@ export type DepartmentSelection = {
   confirmedAt?: string | null;
 };
 
+/** The post-survey, one per student (see `content/post-survey.ts`). */
+export type CareerPostSurvey = {
+  userId: string;
+  surveyVersion: string;
+  departmentSlugs: string[];
+  departmentAnswers: Record<string, unknown>;
+  comparisonAnswers: Record<string, unknown>;
+  experienceAnswers: Record<string, unknown>;
+  status: 'draft' | 'submitted';
+  createdAt: string;
+  updatedAt: string;
+  submittedAt: string | null;
+};
+
+/** What a save or a submission writes. */
+export type CareerPostSurveyInput = Pick<
+  CareerPostSurvey,
+  'surveyVersion' | 'departmentSlugs' | 'departmentAnswers' | 'comparisonAnswers' | 'experienceAnswers'
+>;
+
 /** A confirmed 2+1 department plan, as it is saved. */
 export type ConfirmDepartmentPlanInput = {
   userChosenSlugs: string[];

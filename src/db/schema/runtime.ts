@@ -232,6 +232,38 @@ export const postSurveys = pgTable(
   ],
 );
 
+/**
+ * The post-survey (post-survey-v1.0): one per student, covering the three
+ * departments of their confirmed plan. Kept apart from `post_surveys` (one row
+ * per department, from an earlier design, never written by the app), which is
+ * left as it is. Part A, B and C are separate columns because they mean
+ * different things — C is service quality, never part of any fit.
+ */
+export const careerPostSurveys = pgTable(
+  'career_post_surveys',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    surveyVersion: text('survey_version').notNull(),
+    /** The plan's three departments, as they were when the survey was written. */
+    departmentSlugs: jsonb('department_slugs').$type<string[]>().notNull(),
+    /** Part A, by department slug. */
+    departmentAnswers: jsonb('department_answers').$type<Record<string, unknown>>().notNull().default({}),
+    /** Part B. */
+    comparisonAnswers: jsonb('comparison_answers').$type<Record<string, unknown>>().notNull().default({}),
+    /** Part C. */
+    experienceAnswers: jsonb('experience_answers').$type<Record<string, unknown>>().notNull().default({}),
+    /** `draft` until submitted; `submitted` is final. */
+    status: text('status').notNull().default('draft'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  },
+  (table) => [uniqueIndex('career_post_surveys_user_idx').on(table.userId)],
+);
+
 export const departmentSelections = pgTable(
   'department_selections',
   {

@@ -8,6 +8,8 @@ import type {
   AiMessage,
   BehaviorEvent,
   BehaviorEventType,
+  CareerPostSurvey,
+  CareerPostSurveyInput,
   ConfirmDepartmentPlanInput,
   DepartmentSelection,
   PreSurvey,
@@ -28,6 +30,21 @@ import type {
   SaveAnswerInput,
   XPassRepository,
 } from './types';
+
+function toCareerPostSurvey(row: typeof schema.careerPostSurveys.$inferSelect): CareerPostSurvey {
+  return {
+    userId: row.userId,
+    surveyVersion: row.surveyVersion,
+    departmentSlugs: row.departmentSlugs,
+    departmentAnswers: row.departmentAnswers,
+    comparisonAnswers: row.comparisonAnswers,
+    experienceAnswers: row.experienceAnswers,
+    status: row.status === 'submitted' ? 'submitted' : 'draft',
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    submittedAt: row.submittedAt ? row.submittedAt.toISOString() : null,
+  };
+}
 
 function toSelection(row: typeof schema.departmentSelections.$inferSelect): DepartmentSelection {
   return {
@@ -194,6 +211,49 @@ export class DrizzleRepository implements XPassRepository {
       .where(eq(schema.departmentSelections.userId, userId))
       .limit(1);
     return row ? toSelection(row) : null;
+  }
+
+  async getCareerPostSurvey(userId: string) {
+    const [row] = await this.db
+      .select()
+      .from(schema.careerPostSurveys)
+      .where(eq(schema.careerPostSurveys.userId, userId))
+      .limit(1);
+    return row ? toCareerPostSurvey(row) : null;
+  }
+
+  async saveCareerPostSurveyDraft(userId: string, input: CareerPostSurveyInput) {
+    return this.writeCareerPostSurvey(userId, input, 'draft');
+  }
+
+  async submitCareerPostSurvey(userId: string, input: CareerPostSurveyInput) {
+    return this.writeCareerPostSurvey(userId, input, 'submitted');
+  }
+
+  private async writeCareerPostSurvey(
+    userId: string,
+    input: CareerPostSurveyInput,
+    status: CareerPostSurvey['status'],
+  ) {
+    const at = new Date();
+    const values = {
+      ...input,
+      status,
+      updatedAt: at,
+      submittedAt: status === 'submitted' ? at : null,
+    };
+    // Only over a draft: once submitted, neither a save nor a second (or a
+    // concurrent) submission changes the row, and no row comes back.
+    const [row] = await this.db
+      .insert(schema.careerPostSurveys)
+      .values({ userId, ...values })
+      .onConflictDoUpdate({
+        target: schema.careerPostSurveys.userId,
+        set: values,
+        setWhere: ne(schema.careerPostSurveys.status, 'submitted'),
+      })
+      .returning();
+    return row ? toCareerPostSurvey(row) : null;
   }
 
   async confirmDepartmentPlan(userId: string, plan: ConfirmDepartmentPlanInput) {

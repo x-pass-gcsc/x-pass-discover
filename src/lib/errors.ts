@@ -11,11 +11,14 @@
 export class ScenarioRuleError extends Error {
   /** Optional machine-readable reason, for a client that reacts to it. */
   readonly code?: string;
+  /** Optional structured detail (e.g. which answers are missing). */
+  readonly details?: unknown;
 
-  constructor(message: string, code?: string) {
+  constructor(message: string, code?: string, details?: unknown) {
     super(message);
     this.name = 'ScenarioRuleError';
     this.code = code;
+    this.details = details;
   }
 }
 
