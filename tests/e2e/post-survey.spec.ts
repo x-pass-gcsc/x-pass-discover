@@ -106,7 +106,7 @@ test('after three departments the survey is answered, saved, restored, submitted
   await expect(page.getByTestId('post-survey-form')).not.toContainText(/Pre-LIKE|AI Recommendation/);
 
   // Incomplete: refused, with what is missing.
-  let response = await submit(page, { departmentAnswers: { [plan[0]]: { a1: 6 } }, comparisonAnswers: {}, experienceAnswers: {} });
+  const response = await submit(page, { departmentAnswers: { [plan[0]]: { a1: 6 } }, comparisonAnswers: {}, experienceAnswers: {} });
   expect(response.status()).toBe(400);
   const incomplete = await response.json();
   expect(incomplete.code).toBe('incomplete');
