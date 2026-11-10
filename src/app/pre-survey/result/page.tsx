@@ -9,17 +9,22 @@ import { getRepository } from '@/db/repository';
 import { PreLikeAreas } from '@/features/survey/pre-like-areas';
 import { getLocale, getT } from '@/i18n/server';
 import { getCurrentUser } from '@/lib/auth/session';
+import { getReportAccess } from '@/services/report/report-access';
 
 /**
- * The pre-survey's result, shown as soon as it is submitted: the Pre-LIKE
- * index of each job with its three areas, and the jobs worth exploring first
- * (the rubric's top three, ties included). It is a self-reported preference,
+ * The pre-survey's result. It is not shown when the survey is submitted: like
+ * the rest of the report, it opens only once `getReportAccess` says so, and
+ * until then this address sends the student to the (locked) report. When it
+ * opens, it shows the Pre-LIKE index of each job with its three areas, and the
+ * jobs worth exploring first (the rubric's top three, ties included). It is a self-reported preference,
  * so it is worded as directions to try, never as what the student is good at.
  * Only a complete 50-answer survey has a result; anything else goes back to it.
  */
 export default async function PreSurveyResultPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+  // Withheld until the final report opens; the report page says what is left.
+  if (!(await getReportAccess(user.id)).unlocked) redirect('/report');
   const answers = (await getRepository().getPreSurvey(user.id))?.answers;
   if (preLikeSource(answers) !== 'ps50-v1' || !answers) redirect('/pre-survey');
   const score = scorePreSurvey50(answers);

@@ -64,16 +64,18 @@ test('the pre-survey API accepts only the 50 answers, each 1 to 5', async ({ pag
     expect(response.status(), `${label} should be refused`).toBe(400);
   }
 
-  // Nothing was saved: the report has no LIKE, and the lobby still opens.
+  // Nothing was saved: the report counts no pre-survey, and the lobby still opens.
   await page.goto('/report');
-  await expect(page.getByRole('img', { name: 'Sales LIKE not recorded' })).toBeVisible();
+  await expect(page.locator('[data-report-step="pre-survey"]')).toHaveAttribute('data-report-step-state', 'todo');
   await page.goto('/start');
   await expect(page.getByTestId('start-lobby')).toBeVisible();
 
-  // All 50, each 1–5, is saved and scored.
+  // All 50, each 1–5, is saved and scored as a complete survey — but the
+  // score itself stays hidden until the final report opens.
   expect((await post(full)).ok()).toBe(true);
   await page.goto('/report');
-  await expect(page.getByRole('img', { name: 'Sales LIKE 50 out of 100' })).toBeVisible();
+  await expect(page.locator('[data-report-step="pre-survey"]')).toHaveAttribute('data-report-step-state', 'done');
+  await expect(page.getByRole('img', { name: /LIKE \d+ out of 100/ })).toHaveCount(0);
   await expect(page.getByTestId('new-survey-notice')).toHaveCount(0);
 });
 
@@ -111,39 +113,40 @@ test('clicking a score twice as the survey moves on does not skip a question', a
 });
 
 /**
- * Submitting the pre-survey shows its result straight away: every job's
- * Pre-LIKE with its areas, and the jobs recommended to explore first.
+ * Submitting the pre-survey shows no result: the student goes straight to the
+ * reception desk to choose departments, and the result — scores, areas,
+ * recommended jobs — stays withheld until the final report opens. Asking for
+ * it by address is refused on the server, not just unlinked.
  */
-test('the pre-survey result shows the analysis and the recommended jobs', async ({ page }) => {
+test('the pre-survey result is withheld until the final report opens', async ({ page }) => {
   await signUp(page, { email: uniqueEmail('survey-result'), displayName: 'Result Reader' });
-  // Sales 5s, HR 4s, Strategy 3s, Marketing 2s, PM 1s → 100, 75, 50, 25, 0.
-  const byDepartment: Record<string, number> = { '0': 2, '1': 3, '2': 5, '3': 4, '4': 1 };
-  const scores = Object.fromEntries(
-    Array.from({ length: 50 }, (_, i) => [
-      `PS50_${String(i + 1).padStart(2, '0')}`,
-      byDepartment[String(Math.floor(i / 10))],
-    ]),
-  );
-  await completePreSurvey(page, scores, { continueToOffice: false });
+  await completePreSurvey(page);
 
-  const recommended = page.getByTestId('survey-result-recommended');
-  await expect(recommended.locator('[data-recommended]')).toHaveCount(3);
-  for (const slug of ['sales', 'human-resources', 'strategy']) {
-    await expect(recommended.locator(`[data-recommended="${slug}"]`)).toBeVisible();
+  // Straight to choosing departments, with nothing scored on screen.
+  await expect(page.getByTestId('department-desk')).toBeVisible();
+  await expect(page.getByTestId('survey-result-recommended')).toHaveCount(0);
+  await expect(page.getByTestId('explore-candidate')).toHaveCount(0);
+  await expect(page.getByText(/Pre-LIKE/)).toHaveCount(0);
+
+  // The result page by address: sent to the locked report instead.
+  await page.goto('/pre-survey/result');
+  await page.waitForURL('**/report');
+  await expect(page.getByTestId('report-locked')).toBeVisible();
+  await expect(page.getByTestId('survey-result-recommended')).toHaveCount(0);
+  await expect(page.getByTestId('survey-result-all')).toHaveCount(0);
+
+  // The report itself: what is left to do, and no analysis.
+  await expect(page.locator('[data-report-step="pre-survey"]')).toHaveAttribute('data-report-step-state', 'done');
+  await expect(page.locator('[data-report-step="departments"]')).toContainText('0/3');
+  await expect(page.getByTestId('pre-like-breakdown')).toHaveCount(0);
+  await expect(page.getByRole('img', { name: /LIKE \d+ out of 100/ })).toHaveCount(0);
+  await expect(page.getByText(/Pre-LIKE/)).toHaveCount(0);
+
+  // Nothing the server renders for either page carries a score.
+  for (const path of ['/report', '/pre-survey/result']) {
+    const html = await (await page.request.get(path)).text();
+    expect(html, `${path} should not carry Pre-LIKE`).not.toContain('Pre-LIKE');
+    expect(html).not.toContain('pre-like-breakdown');
+    expect(html).not.toContain('survey-result-recommended');
   }
-  // Playable jobs can be tried in the office; one that is not says so.
-  await expect(
-    recommended.locator('[data-recommended="sales"]').getByRole('button', { name: 'Try it in the office' }),
-  ).toBeVisible();
-  await expect(recommended.locator('[data-recommended="strategy"]')).toContainText('Coming soon');
-  // Three areas for each recommended job, scored on the same 0–100 scale.
-  await expect(recommended.getByRole('img', { name: /^Sales — .*: 100 out of 100$/ })).toHaveCount(3);
-
-  const all = page.getByTestId('survey-result-all');
-  for (const [name, value] of [['Sales', 100], ['Human Resources', 75], ['Strategy', 50], ['Marketing', 25], ['Product Management', 0]] as const) {
-    await expect(all.getByRole('img', { name: `${name} Pre-LIKE ${value} / 100` })).toBeVisible();
-  }
-
-  await page.getByTestId('result-continue').click();
-  await page.waitForURL('**/office');
 });

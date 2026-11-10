@@ -102,7 +102,6 @@ export async function signUpAsNewStudent(
 export async function completePreSurvey(
   page: Page,
   scores: Record<string, number> = {},
-  { continueToOffice = true }: { continueToOffice?: boolean } = {},
 ): Promise<void> {
   await page.goto('/pre-survey');
   // One question per screen, in whatever order and number the content
@@ -128,12 +127,10 @@ export async function completePreSurvey(
     if (current === total) break;
     await expect(question).not.toHaveAttribute('data-question-key', key);
   }
-  // Finishing the survey shows its result first; from there the student
-  // walks into the office.
-  await page.waitForURL('**/pre-survey/result');
-  if (!continueToOffice) return;
-  await page.getByTestId('result-continue').click();
-  await page.waitForURL('**/office');
+  // Finishing the survey shows no result: the student goes straight to the
+  // reception desk in the office to choose departments.
+  await page.waitForURL(/\/office(\?.*)?$/);
+  await expect(page.getByTestId('department-desk')).toBeVisible();
 }
 
 /** The session id an office URL (`/office?session=…`) is open on. */

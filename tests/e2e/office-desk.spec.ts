@@ -20,13 +20,16 @@ import { completeCurrentStep } from './helpers/forms';
  * switching, so each department keeps its own progress.
  */
 
-test('after the pre-survey a new student walks into the office as a visitor', async ({ page }) => {
+test('after the pre-survey a new student goes to the reception desk in the office', async ({ page }) => {
   await signUp(page, { email: uniqueEmail('desk-new'), displayName: 'New Visitor' });
   await page.getByTestId('start-lobby-next').click();
   await page.waitForURL('**/pre-survey');
   await completePreSurvey(page);
 
-  // In the office, with no bootcamp: pointed at reception, and no work to open.
+  // Straight to the reception desk; putting it away leaves a visitor in the
+  // office, pointed at reception, with no work to open.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('department-desk')).toHaveCount(0);
   await expect(page).toHaveURL(/\/office$/);
   await expect(page.getByTestId('office-mission')).toHaveAttribute('data-quest-step', 'reception');
   await expect(officeDepartment(page)).toHaveAttribute('data-current-department', '');
