@@ -19,9 +19,7 @@ export const REQUIRED_DEPARTMENTS = 3;
  *      and each of its three departments has a completed bootcamp,
  *   3. the post-survey has been submitted.
  *
- * Every check reads real records only. Nothing that does not exist yet is
- * assumed done: there is no post-survey, so (3) is never met and the report
- * stays locked — on purpose, until it is built.
+ * Every check reads real records only; nothing is assumed done.
  */
 export type ReportAccess = {
   unlocked: boolean;
@@ -49,7 +47,7 @@ export async function getReportAccess(userId: string): Promise<ReportAccess> {
   const completedDepartments = confirmedDepartments.filter((slug) =>
     sessions.some((s) => s.departmentSlug === slug && s.status === 'completed'),
   );
-  const postSurveySubmitted = await hasSubmittedPostSurvey(userId);
+  const postSurveySubmitted = await hasSubmittedPostSurvey(userId, confirmedDepartments);
 
   return {
     unlocked:
@@ -67,11 +65,15 @@ export async function getReportAccess(userId: string): Promise<ReportAccess> {
 }
 
 /**
- * Whether the post-survey has been submitted. There is no post-survey yet, so
- * there is nothing to read and the answer is no. Replace this with a read of
- * the stored post-survey when it is built.
+ * Whether the post-survey has been submitted — read from the stored survey,
+ * and only for the departments of the confirmed plan.
  */
-async function hasSubmittedPostSurvey(userId: string): Promise<boolean> {
-  void userId;
-  return false;
+async function hasSubmittedPostSurvey(userId: string, planDepartments: string[]): Promise<boolean> {
+  if (planDepartments.length === 0) return false;
+  const survey = await getRepository().getCareerPostSurvey(userId);
+  return (
+    survey?.status === 'submitted' &&
+    survey.departmentSlugs.length === planDepartments.length &&
+    planDepartments.every((slug) => survey.departmentSlugs.includes(slug))
+  );
 }

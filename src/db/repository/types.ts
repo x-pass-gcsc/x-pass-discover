@@ -4,6 +4,8 @@ import type {
   AnswerValue,
   BehaviorEvent,
   BehaviorEventType,
+  CareerPostSurvey,
+  CareerPostSurveyInput,
   ConfirmDepartmentPlanInput,
   DepartmentSelection,
   PreSurvey,
@@ -99,6 +101,19 @@ export interface XPassRepository {
     userId: string,
     plan: ConfirmDepartmentPlanInput,
   ): Promise<DepartmentSelection | null>;
+
+  // --- post-survey ----------------------------------------------------------
+  getCareerPostSurvey(userId: string): Promise<CareerPostSurvey | null>;
+  /**
+   * Saves a draft. Null — and nothing written — when the survey was already
+   * submitted, checked in the same write.
+   */
+  saveCareerPostSurveyDraft(userId: string, input: CareerPostSurveyInput): Promise<CareerPostSurvey | null>;
+  /**
+   * Submits, once. Null when it was already submitted (a second or a
+   * concurrent submission), checked in the same write.
+   */
+  submitCareerPostSurvey(userId: string, input: CareerPostSurveyInput): Promise<CareerPostSurvey | null>;
 
   // --- sessions -----------------------------------------------------------
   createSession(input: CreateSessionInput): Promise<ProjectSession>;

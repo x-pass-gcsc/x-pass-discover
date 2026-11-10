@@ -22,6 +22,11 @@ export function ReportLocked({
   t: Translate;
 }) {
   const nameOf = (slug: string) => departments.find((d) => d.slug === slug)?.name ?? slug;
+  // The post-survey opens once the three departments are done.
+  const postSurveyReady =
+    access.preSurveyComplete &&
+    access.planConfirmed &&
+    access.completedDepartments.length >= REQUIRED_DEPARTMENTS;
   const steps = [
     {
       key: 'pre-survey',
@@ -39,7 +44,7 @@ export function ReportLocked({
     {
       key: 'post-survey',
       label: t('report.locked.postSurvey'),
-      state: access.postSurveySubmitted ? 'done' : 'unavailable',
+      state: access.postSurveySubmitted ? 'done' : postSurveyReady ? 'ready' : 'unavailable',
     },
   ] as const;
 
@@ -63,7 +68,15 @@ export function ReportLocked({
               >
                 {step.state === 'done' ? '✓' : index + 1}
               </span>
-              <span className="min-w-0 flex-1 text-strong">{step.label}</span>
+              <span className="min-w-0 flex-1 text-strong">
+                {step.key === 'post-survey' && step.state === 'ready' ? (
+                  <Link href="/post-survey" className="text-brand-600 underline-offset-4 hover:underline">
+                    {step.label}
+                  </Link>
+                ) : (
+                  step.label
+                )}
+              </span>
               <Badge tone={step.state === 'done' ? 'success' : 'muted'} className="shrink-0">
                 {t(`report.locked.state.${step.state}` as MessageKey)}
               </Badge>
@@ -71,6 +84,11 @@ export function ReportLocked({
           ))}
         </ol>
         <div className="flex flex-wrap justify-end gap-3 border-t border-line px-5 py-4">
+          {postSurveyReady && !access.postSurveySubmitted ? (
+            <Link href="/post-survey">
+              <Button variant="secondary">{t('post.callout.cta')}</Button>
+            </Link>
+          ) : null}
           {access.preSurveyComplete ? null : (
             <Link href="/pre-survey">
               <Button variant="secondary">{t('report.locked.takeSurvey')}</Button>

@@ -76,6 +76,9 @@ export default defineConfig({
           // it explicitly means a stray OPENAI_API_KEY in the environment
           // cannot turn the tests into billable, non-deterministic API calls.
           X_PASS_AI_MODE: 'mock',
+          // Turns on the test-only fixture routes (/api/test-fixtures/*), which
+          // also require the in-memory store; no deployment sets this.
+          X_PASS_TEST_FIXTURES: '1',
           OPENAI_API_KEY: '',
           // No DATABASE_URL: production + no URL is demo mode, which is what we
           // want to exercise. Blank it out so a developer's .env cannot point

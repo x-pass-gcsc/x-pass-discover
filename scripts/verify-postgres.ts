@@ -76,7 +76,7 @@ async function main() {
   );
   check(
     `migrations applied (${files.join(', ')})`,
-    tables.rows[0].count === 31,
+    tables.rows[0].count === 32,
     `${tables.rows[0].count} tables`,
   );
 
@@ -219,6 +219,36 @@ async function main() {
   check(
     'a confirmed plan is not replaced',
     secondPlan === null && afterSecond?.departmentSlugs.join() === 'sales,human-resources,strategy',
+  );
+
+  // The post-survey: drafts until submitted, submitted once, then frozen.
+  const surveyInput = (b5: number) => ({
+    surveyVersion: 'post-survey-v1.0',
+    departmentSlugs: ['sales', 'human-resources', 'strategy'],
+    departmentAnswers: { sales: { a1: 6 }, 'human-resources': { a1: 3 }, strategy: { a1: 5 } },
+    comparisonAnswers: { b5 },
+    experienceAnswers: { c1: 7 },
+  });
+  const draft = await repo.saveCareerPostSurveyDraft(user.id, surveyInput(2));
+  check('post-survey draft saves', draft?.status === 'draft' && draft.submittedAt === null);
+  const redraft = await repo.saveCareerPostSurveyDraft(user.id, surveyInput(3));
+  check('post-survey draft updates', (redraft?.comparisonAnswers as { b5?: number }).b5 === 3);
+  const submitted = await repo.submitCareerPostSurvey(user.id, surveyInput(4));
+  check(
+    'post-survey submits with its parts kept apart',
+    submitted?.status === 'submitted' &&
+      !!submitted.submittedAt &&
+      (submitted.departmentAnswers as Record<string, { a1: number }>)['human-resources'].a1 === 3 &&
+      (submitted.experienceAnswers as { c1: number }).c1 === 7,
+  );
+  const [again, laterDraft] = await Promise.all([
+    repo.submitCareerPostSurvey(user.id, surveyInput(5)),
+    repo.saveCareerPostSurveyDraft(user.id, surveyInput(6)),
+  ]);
+  const storedSurvey = await repo.getCareerPostSurvey(user.id);
+  check(
+    'a submitted post-survey cannot be resubmitted or redrafted',
+    again === null && laterDraft === null && (storedSurvey?.comparisonAnswers as { b5: number }).b5 === 4,
   );
 
   const { startSession, loadSessionView } = await import(
