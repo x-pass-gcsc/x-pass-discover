@@ -243,6 +243,17 @@ export const departmentSelections = pgTable(
     selectedAt: timestamp('selected_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /*
+     * The confirmed "two chosen + one recommended" plan. All null on a row
+     * saved before it existed (a free pick of up to three), which stays as it
+     * was and counts as not confirmed.
+     */
+    userChosenSlugs: jsonb('user_chosen_slugs').$type<string[]>(),
+    aiRecommendedSlug: text('ai_recommended_slug'),
+    recommendationVersion: text('recommendation_version'),
+    /** Why the recommendation was made — kept for the final report, never shown before it. */
+    recommendation: jsonb('recommendation').$type<Record<string, unknown>>(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   },
   (table) => [uniqueIndex('department_selections_user_idx').on(table.userId)],
 );

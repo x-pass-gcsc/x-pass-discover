@@ -140,6 +140,24 @@ export type PreSurvey = {
 
 export type DepartmentSelection = {
   userId: string;
+  /** Once confirmed: the three, chosen first, the recommendation last. */
   departmentSlugs: string[];
   selectedAt: string;
+  /** The two the student chose. Null on a record from before the 2+1 plan. */
+  userChosenSlugs?: string[] | null;
+  /** The one recommended for them. */
+  aiRecommendedSlug?: string | null;
+  recommendationVersion?: string | null;
+  /** The recommendation's reasons and scores, kept for the final report. */
+  recommendation?: Record<string, unknown> | null;
+  /** When the plan was confirmed; null means not confirmed. */
+  confirmedAt?: string | null;
+};
+
+/** A confirmed 2+1 department plan, as it is saved. */
+export type ConfirmDepartmentPlanInput = {
+  userChosenSlugs: string[];
+  aiRecommendedSlug: string;
+  recommendationVersion: string;
+  recommendation: Record<string, unknown>;
 };

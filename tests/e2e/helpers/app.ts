@@ -174,12 +174,50 @@ export function officeDepartment(page: Page): Locator {
   return page.getByTestId('office-department');
 }
 
+/** All 50 pre-survey answers set to one value. */
+export function surveyAnswers(value = 4): Record<string, number> {
+  return Object.fromEntries(
+    Array.from({ length: 50 }, (_, i) => [`PS50_${String(i + 1).padStart(2, '0')}`, value]),
+  );
+}
+
+/**
+ * Confirms the 2+1 department plan through the API — what choosing two at the
+ * reception desk and confirming does, without the clicks. Submits a pre-survey
+ * first if the account has none. Returns the recommended department; a plan
+ * already confirmed is left as it is.
+ */
+export async function confirmDepartments(page: Page, chosen: [string, string]): Promise<string | null> {
+  const recommend = () =>
+    page.request.post('/api/departments/recommendation', { data: { userChosenSlugs: chosen } });
+  let response = await recommend();
+  let body = await response.json();
+  if (body.code === 'pre_survey_incomplete') {
+    const saved = await page.request.post('/api/pre-survey', { data: { answers: surveyAnswers() } });
+    expect(saved.ok(), 'the pre-survey should save').toBe(true);
+    response = await recommend();
+    body = await response.json();
+  }
+  if (body.code === 'already_confirmed') return null;
+  expect(response.ok(), `recommendation failed: ${JSON.stringify(body)}`).toBe(true);
+  const confirmed = await page.request.post('/api/departments/selection', {
+    data: { userChosenSlugs: chosen, aiRecommendedSlug: body.aiRecommendedSlug },
+  });
+  expect(confirmed.ok(), `confirmation failed: ${await confirmed.text()}`).toBe(true);
+  return body.aiRecommendedSlug;
+}
+
+/** The playable department a test pairs with `slug` when it confirms a plan. */
+const PARTNER: Record<string, string> = { sales: 'human-resources', 'human-resources': 'sales' };
+
 /**
  * Starts (or resumes) a department's bootcamp at the reception desk in the
- * office, and opens the work window so the step rail is on screen. Returns the
- * session id taken from the URL.
+ * office, and opens the work window so the step rail is on screen. The plan
+ * is confirmed first (the department and its playable partner, chosen), as a
+ * new bootcamp needs one. Returns the session id taken from the URL.
  */
 export async function startBootcamp(page: Page, slug = 'sales'): Promise<string> {
+  await confirmDepartments(page, [slug, PARTNER[slug] ?? 'sales']);
   await page.goto('/office');
   const card = await openDesk(page, slug);
   await expect(card).toHaveAttribute('data-department-status', 'playable');

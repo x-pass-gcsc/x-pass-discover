@@ -1,6 +1,7 @@
 import 'server-only';
 import { scorePreSurvey50 } from '@/content/pre-survey-rubric-v1';
 import { getRepository } from '@/db/repository';
+import { planFrom } from '@/services/departments/plan-service';
 
 /** How many departments a student explores before the final report. */
 export const REQUIRED_DEPARTMENTS = 3;
@@ -14,8 +15,8 @@ export const REQUIRED_DEPARTMENTS = 3;
  * tries or how they behave in them. The report opens only when all three hold:
  *
  *   1. the 50-question pre-survey is complete,
- *   2. every one of the student's confirmed departments has a completed
- *      bootcamp, and there are three of them,
+ *   2. the 2+1 department plan is confirmed (two chosen, one recommended),
+ *      and each of its three departments has a completed bootcamp,
  *   3. the post-survey has been submitted.
  *
  * Every check reads real records only. Nothing that does not exist yet is
@@ -25,7 +26,9 @@ export const REQUIRED_DEPARTMENTS = 3;
 export type ReportAccess = {
   unlocked: boolean;
   preSurveyComplete: boolean;
-  /** The departments the student has confirmed, as far as the app records it. */
+  /** Whether the 2+1 plan is confirmed. */
+  planConfirmed: boolean;
+  /** The plan's three departments; empty until it is confirmed. */
   confirmedDepartments: string[];
   /** Those of them with a completed bootcamp. */
   completedDepartments: string[];
@@ -41,7 +44,8 @@ export async function getReportAccess(userId: string): Promise<ReportAccess> {
   ]);
 
   const preSurveyComplete = !!preSurvey && scorePreSurvey50(preSurvey.answers).complete;
-  const confirmedDepartments = confirmedDepartmentsFrom(selection?.departmentSlugs ?? []);
+  const plan = planFrom(selection);
+  const confirmedDepartments = plan.confirmed ? plan.departmentSlugs : [];
   const completedDepartments = confirmedDepartments.filter((slug) =>
     sessions.some((s) => s.departmentSlug === slug && s.status === 'completed'),
   );
@@ -50,23 +54,16 @@ export async function getReportAccess(userId: string): Promise<ReportAccess> {
   return {
     unlocked:
       preSurveyComplete &&
+      plan.confirmed &&
       confirmedDepartments.length === REQUIRED_DEPARTMENTS &&
       completedDepartments.length === REQUIRED_DEPARTMENTS &&
       postSurveySubmitted,
     preSurveyComplete,
+    planConfirmed: plan.confirmed,
     confirmedDepartments,
     completedDepartments,
     postSurveySubmitted,
   };
-}
-
-/**
- * The student's confirmed departments. Today that is the saved selection (up
- * to three, chosen at the reception desk). When the "two chosen + one
- * recommended" confirmation exists, read it here instead.
- */
-function confirmedDepartmentsFrom(selection: string[]): string[] {
-  return Array.from(new Set(selection)).slice(0, REQUIRED_DEPARTMENTS);
 }
 
 /**
