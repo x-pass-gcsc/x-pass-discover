@@ -92,7 +92,9 @@ export function ChatPanel({
 
   async function send() {
     const message = draft.trim();
-    if (!message || sending) return;
+    // Until the conversation is open (the opening line is on screen), there is
+    // nothing to answer yet — and a late `open` would overwrite the reply.
+    if (!message || sending || !conversation) return;
     setSending(true);
     setError(null);
     setDraft('');
@@ -140,6 +142,7 @@ export function ChatPanel({
   const ended = conversation?.status === 'ended';
   const canEnd = remaining === 0 && !ended;
   const found = conversation?.discoveredFactCount ?? 0;
+  const loading = !conversation;
   const total = conversation?.totalDiscoverableFactCount ?? 0;
 
   if (compact) {
@@ -196,13 +199,13 @@ export function ChatPanel({
             data-testid="chat-input"
             className={`${inputClass} py-2 text-xs`}
             value={draft}
-            disabled={readOnly || sending || ended}
+            disabled={readOnly || loading || sending || ended}
             placeholder={t('chat.placeholder')}
             onChange={(e) => setDraft(e.target.value)}
           />
           <Button
             type="submit"
-            disabled={readOnly || sending || ended || !draft.trim()}
+            disabled={readOnly || loading || sending || ended || !draft.trim()}
             data-testid="chat-send"
             aria-label={t('chat.send')}
             className="shrink-0 px-3"
@@ -331,7 +334,7 @@ export function ChatPanel({
                 data-testid="chat-input"
                 className={inputClass}
                 value={draft}
-                disabled={readOnly || sending}
+                disabled={readOnly || loading || sending}
                 placeholder={t('chat.placeholder')}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -343,7 +346,7 @@ export function ChatPanel({
               />
               <Button
                 onClick={send}
-                disabled={readOnly || sending || !draft.trim()}
+                disabled={readOnly || loading || sending || !draft.trim()}
                 className="self-stretch"
                 data-testid="chat-send"
               >

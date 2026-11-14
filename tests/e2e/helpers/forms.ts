@@ -228,6 +228,8 @@ export async function holdConversation(
   const MAX_TURNS = 15;
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     if (await end.isEnabled()) break;
+    // The input opens once the conversation (and its opening line) has loaded.
+    await expect(input).toBeEnabled();
     const before = await card.getByTestId('chat-message').count();
     await input.fill(questions[turn % questions.length]);
     await card.getByTestId('chat-send').click();
