@@ -88,7 +88,7 @@ export default async function ReportPage() {
       backHref="/office"
       backLabel={t('office.title')}
     >
-      <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[1.5fr_1fr]">
         <Card>
           <CardHeader
             title={t('report.likeFit.title')}
@@ -96,8 +96,8 @@ export default async function ReportPage() {
           />
 
           <div className="px-5 py-4">
-            <div className="grid grid-cols-[minmax(110px,1fr)_minmax(140px,2fr)_84px] gap-x-4 pb-2.5 text-[10px] font-medium uppercase tracking-wider text-muted">
-              <span>{t('common.department')}</span>
+            <div className="grid grid-cols-[minmax(0,1fr)_64px] sm:grid-cols-[minmax(110px,1fr)_minmax(140px,2fr)_84px] gap-x-4 pb-2.5 text-[10px] font-medium uppercase tracking-wider text-muted">
+              <span className="hidden sm:block">{t('common.department')}</span>
               <span>
                 LIKE
                 <span className="ml-1.5 font-normal normal-case text-subtle" data-testid="like-scale">
@@ -117,9 +117,10 @@ export default async function ReportPage() {
               {rows.map(({ department, like, completed }) => (
                 <div
                   key={department.slug}
-                  className="grid grid-cols-[minmax(110px,1fr)_minmax(140px,2fr)_84px] items-center gap-x-4 py-2.5"
+                  className="grid grid-cols-[minmax(0,1fr)_64px] sm:grid-cols-[minmax(110px,1fr)_minmax(140px,2fr)_84px] items-center gap-x-4 gap-y-1.5 py-2.5"
                 >
-                  <div className="flex min-w-0 items-center gap-2">
+                  {/* On a phone the department takes its own line above the bar. */}
+                  <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:col-span-1">
                     <span
                       aria-hidden
                       className="size-2 shrink-0 rounded-full"
