@@ -20,6 +20,27 @@ function readFlag(name: string): string | undefined {
 const databaseUrl = readFlag('DATABASE_URL');
 const openAiKey = readFlag('OPENAI_API_KEY');
 const requestedAiMode = readFlag('X_PASS_AI_MODE');
+const anthropicKey = readFlag('ANTHROPIC_API_KEY');
+const requestedSenpaiProvider = readFlag('X_PASS_SENPAI_PROVIDER');
+
+/**
+ * Which model answers the always-available "AI senpai" chat.
+ *
+ * Claude is preferred when ANTHROPIC_API_KEY is set. A deployment that only has
+ * the OpenAI key the AI employees already use still gets a real senpai, so the
+ * feature works without a second credential. With neither key the senpai runs
+ * as a canned offline helper and says so in its window.
+ */
+export type SenpaiProvider = 'anthropic' | 'openai' | 'mock';
+
+function resolveSenpaiProvider(): SenpaiProvider {
+  if (requestedSenpaiProvider === 'mock') return 'mock';
+  if (requestedSenpaiProvider === 'anthropic') return anthropicKey ? 'anthropic' : 'mock';
+  if (requestedSenpaiProvider === 'openai') return openAiKey ? 'openai' : 'mock';
+  if (anthropicKey) return 'anthropic';
+  if (openAiKey) return 'openai';
+  return 'mock';
+}
 
 function resolveAiMode(): AiMode {
   if (requestedAiMode === 'openai') return openAiKey ? 'openai' : 'mock';
@@ -54,6 +75,10 @@ export const env = {
   /** True when `X_PASS_AI_MODE=openai` was requested but no key was supplied. */
   aiModeDowngraded: requestedAiMode === 'openai' && !openAiKey,
   persistenceMode: resolvePersistenceMode(),
+  anthropicKey,
+  senpaiProvider: resolveSenpaiProvider(),
+  senpaiAnthropicModel: readFlag('X_PASS_SENPAI_MODEL') ?? 'claude-opus-5-5',
+  senpaiOpenAiModel: readFlag('X_PASS_SENPAI_OPENAI_MODEL') ?? readFlag('X_PASS_OPENAI_MODEL') ?? 'gpt-4o-mini',
   appUrl: readFlag('NEXT_PUBLIC_APP_URL') ?? 'http://localhost:3000',
   authSecret: readFlag('AUTH_SECRET') ?? 'x-pass-insecure-dev-secret',
   authSecretIsDevFallback: !readFlag('AUTH_SECRET'),

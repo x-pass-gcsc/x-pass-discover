@@ -211,6 +211,30 @@ timestamps. Nothing in the codebase converts a count, a duration or a message
 total into a score, and the admin inspector deliberately shows raw rows with no
 aggregates.
 
+### The AI senpai: ask anything, from any page
+
+Every signed-in page has an **Ask a senior / 先輩に相談** button (bottom left).
+It opens a chat with a senior BITE colleague who answers anything: how to use
+the app, how to approach a step, what a department's work is really like,
+career worries, business basics.
+
+- **Not evidence.** The chat is kept in the student's browser (per account,
+  `localStorage`), the server stores nothing, and no behaviour event is
+  written. It never touches a bootcamp session.
+- **No shortcut around discovery.** Its context (`src/services/senpai/context.ts`)
+  is only what the student can already see: the public department cards,
+  their plan, and the mission and instructions of the step they are on. Hidden
+  facts, disclosure rules and guardrail numbers are never read. It is told to
+  give hints rather than answers, like the in-step mentor.
+- **Provider.** Claude (`ANTHROPIC_API_KEY`, default model `claude-opus-5-5`
+  at low effort, with the server-side refusal fallback) is preferred; with only
+  `OPENAI_API_KEY` it uses OpenAI; with neither it runs an offline helper with
+  canned tips and says so in its window. Replies stream.
+- **Cost guard.** 30 questions per user per 10 minutes (in-process), 2,000
+  characters per question, the last 20 turns sent.
+- In the office, walking pauses while the window is open, so typing does not
+  move the player.
+
 ---
 
 ## 3. Important file locations
@@ -329,6 +353,10 @@ See `.env.example`. **All of them are optional.**
 | `OPENAI_API_KEY` | Deterministic mock AI; the scenario stays fully playable |
 | `X_PASS_AI_MODE` | `openai` if a key exists, else `mock` |
 | `X_PASS_OPENAI_MODEL` | `gpt-4o-mini` |
+| `ANTHROPIC_API_KEY` | AI senpai uses OpenAI if that key exists, else its offline helper |
+| `X_PASS_SENPAI_PROVIDER` | `anthropic` if its key exists, else `openai` if that key exists, else `mock` |
+| `X_PASS_SENPAI_MODEL` | `claude-opus-5-5` |
+| `X_PASS_SENPAI_OPENAI_MODEL` | `X_PASS_OPENAI_MODEL`, else `gpt-4o-mini` |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` |
 | `X_PASS_ADMIN_EMAILS` | Admin open to any signed-in user in dev, **closed in production** |
 | `X_PASS_DATA_DIR` | `.data` |
@@ -399,6 +427,14 @@ echo 'OPENAI_API_KEY=sk-...' >> .env
 
 The header badge switches from *Mock AI* to *OpenAI*.
 
+For the AI senpai on Claude:
+
+```bash
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
+```
+
+Its window stops showing the offline-mode note.
+
 ### Deploying
 
 The app is a standard Next.js App Router project, so any Node host works;
@@ -415,6 +451,7 @@ Vercel needs no configuration file.
    | `AUTH_SECRET` | **Yes** | Signs the session cookie. `openssl rand -base64 32` |
    | `DATABASE_URL` | Strongly recommended | Without it the deployment runs in **demo mode** — see below |
    | `OPENAI_API_KEY` | Optional | Without it the AI employees run in deterministic mock mode |
+   | `ANTHROPIC_API_KEY` | Recommended | The AI senpai answers with Claude. Without it (and without `OPENAI_API_KEY`) it gives offline canned tips |
    | `X_PASS_ADMIN_EMAILS` | Optional | `/admin` is **closed** in production unless an email is allow-listed |
    | `NEXT_PUBLIC_APP_URL` | Optional | Your deployment URL |
 

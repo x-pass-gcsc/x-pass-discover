@@ -80,6 +80,9 @@ export default defineConfig({
           // also require the in-memory store; no deployment sets this.
           X_PASS_TEST_FIXTURES: '1',
           OPENAI_API_KEY: '',
+          // Same for the AI senpai: its offline helper, never a billed API.
+          ANTHROPIC_API_KEY: '',
+          X_PASS_SENPAI_PROVIDER: 'mock',
           // No DATABASE_URL: production + no URL is demo mode, which is what we
           // want to exercise. Blank it out so a developer's .env cannot point
           // the suite at a real database and write test rows into it.

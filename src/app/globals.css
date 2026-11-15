@@ -181,3 +181,7 @@ canvas { display: block; }
   font-size: 0.72rem;
   font-weight: 700;
 }
+
+/* The senpai's chat bubbles: markdown without the page-level outer margins. */
+.prose-senpai .prose-xp > :first-child { margin-top: 0; }
+.prose-senpai .prose-xp > :last-child { margin-bottom: 0; }
