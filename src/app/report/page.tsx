@@ -124,7 +124,7 @@ export default async function ReportPage() {
         </div>
 
         <ReportStage number="1" id="before" title={t('report.stage.before')} subtitle={t('report.stage.beforeSub')}>
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[1.5fr_1fr]">
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[1.5fr_1fr]">
             <Card>
               <CardHeader
                 title={t('report.likeFit.title')}
