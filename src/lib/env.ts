@@ -51,6 +51,13 @@ export const env = {
   openAiKey,
   openAiModel: readFlag('X_PASS_OPENAI_MODEL') ?? 'gpt-4o-mini',
   aiMode,
+  /**
+   * Claude, used server-side for the department recommendation and the final
+   * report's synthesis. Without a key both use their rule-based versions.
+   */
+  anthropicKey: readFlag('ANTHROPIC_API_KEY'),
+  claudeModel: readFlag('X_PASS_CLAUDE_MODEL') ?? 'claude-opus-5-5',
+  claudeTimeoutMs: Number(readFlag('X_PASS_CLAUDE_TIMEOUT_MS') ?? 30_000),
   /** True when `X_PASS_AI_MODE=openai` was requested but no key was supplied. */
   aiModeDowngraded: requestedAiMode === 'openai' && !openAiKey,
   persistenceMode: resolvePersistenceMode(),

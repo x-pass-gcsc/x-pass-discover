@@ -79,7 +79,7 @@ async function openAccess(userId: string): Promise<PostSurveyAccess> {
   const access = await getPostSurveyAccess(userId);
   if (access.state === 'locked') {
     throw new ScenarioRuleError(
-      'The post-survey opens once all three of your departments are completed.',
+      'The post-survey opens once all of your departments are completed.',
       'post_survey_locked',
     );
   }

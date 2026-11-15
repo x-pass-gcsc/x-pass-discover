@@ -182,12 +182,18 @@ export function surveyAnswers(value = 4): Record<string, number> {
 }
 
 /**
- * Confirms the 2+1 department plan through the API — what choosing two at the
- * reception desk and confirming does, without the clicks. Submits a pre-survey
- * first if the account has none. Returns the recommended department; a plan
- * already confirmed is left as it is.
+ * Confirms a department plan through the API — what choosing two at the
+ * reception desk and confirming does, without the clicks. By default a plan
+ * of three (the two, plus the recommendation); `{ size: 2 }` confirms the two
+ * alone. Submits a pre-survey first if the account has none. Returns the
+ * recommended department (null for a plan of two); a plan already confirmed
+ * is left as it is.
  */
-export async function confirmDepartments(page: Page, chosen: [string, string]): Promise<string | null> {
+export async function confirmDepartments(
+  page: Page,
+  chosen: [string, string],
+  { size = 3 }: { size?: 2 | 3 } = {},
+): Promise<string | null> {
   const recommend = () =>
     page.request.post('/api/departments/recommendation', { data: { userChosenSlugs: chosen } });
   let response = await recommend();
@@ -201,10 +207,10 @@ export async function confirmDepartments(page: Page, chosen: [string, string]): 
   if (body.code === 'already_confirmed') return null;
   expect(response.ok(), `recommendation failed: ${JSON.stringify(body)}`).toBe(true);
   const confirmed = await page.request.post('/api/departments/selection', {
-    data: { userChosenSlugs: chosen, aiRecommendedSlug: body.aiRecommendedSlug },
+    data: { userChosenSlugs: chosen, recommendationToken: size === 3 ? body.recommendationToken : null },
   });
   expect(confirmed.ok(), `confirmation failed: ${await confirmed.text()}`).toBe(true);
-  return body.aiRecommendedSlug;
+  return size === 3 ? body.aiRecommendedSlug : null;
 }
 
 /** The playable department a test pairs with `slug` when it confirms a plan. */

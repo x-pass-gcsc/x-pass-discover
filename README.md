@@ -8,6 +8,12 @@ business work across five departments — reading real materials, interviewing A
 colleagues and customers, making commercial decisions, and revising them when
 new information lands.
 
+Students choose **two departments**, and may add a **third that AI picks for
+them** — one they would probably not have chosen, with the reason. After every
+bootcamp of the plan and the post-survey, one **overall report** opens: before
+(pre-survey and plan), during (what they did, from the activity log) and after
+(post-survey), with a summary connecting the three.
+
 The final report keeps **LIKE** (what you enjoyed, self-reported) and **SKILL
 FIT** (what the work itself showed) as two separate things. They are never
 merged into one "career fit score".
@@ -329,6 +335,9 @@ See `.env.example`. **All of them are optional.**
 | `OPENAI_API_KEY` | Deterministic mock AI; the scenario stays fully playable |
 | `X_PASS_AI_MODE` | `openai` if a key exists, else `mock` |
 | `X_PASS_OPENAI_MODEL` | `gpt-4o-mini` |
+| `ANTHROPIC_API_KEY` | The department recommendation and the final report's summary use their rule-based versions |
+| `X_PASS_CLAUDE_MODEL` | `claude-opus-5-5` |
+| `X_PASS_CLAUDE_TIMEOUT_MS` | `30000` |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` |
 | `X_PASS_ADMIN_EMAILS` | Admin open to any signed-in user in dev, **closed in production** |
 | `X_PASS_DATA_DIR` | `.data` |
@@ -415,6 +424,7 @@ Vercel needs no configuration file.
    | `AUTH_SECRET` | **Yes** | Signs the session cookie. `openssl rand -base64 32` |
    | `DATABASE_URL` | Strongly recommended | Without it the deployment runs in **demo mode** — see below |
    | `OPENAI_API_KEY` | Optional | Without it the AI employees run in deterministic mock mode |
+   | `ANTHROPIC_API_KEY` | Optional | Claude picks the "unexpected" third department and writes the final report's summary; without it, rules do both |
    | `X_PASS_ADMIN_EMAILS` | Optional | `/admin` is **closed** in production unless an email is allow-listed |
    | `NEXT_PUBLIC_APP_URL` | Optional | Your deployment URL |
 
@@ -480,7 +490,7 @@ itself. That is deliberate: `next start` sets `NODE_ENV=production`, which is
 what makes the app choose `memory` persistence — the exact adapter a
 credential-less deployment gets. Running against `next dev` would exercise the
 file store instead and quietly skip the demo-mode path. It also means every run
-starts from an empty store. `DATABASE_URL` and `OPENAI_API_KEY` are blanked for
+starts from an empty store. `DATABASE_URL`, `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are blanked for
 the suite, so a developer's `.env` can neither point the tests at a real
 database nor turn them into billable API calls.
 

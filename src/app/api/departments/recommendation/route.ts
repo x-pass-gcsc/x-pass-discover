@@ -1,11 +1,13 @@
 import { z } from 'zod';
+import { getLocale, getT } from '@/i18n/server';
 import { parseBody, withUser } from '@/lib/api';
 import { previewRecommendation } from '@/services/departments/plan-service';
 
 /**
- * The department that would be recommended for two choices. Only its slug is
- * returned: the pre-survey scores behind it are not shown until the final
- * report.
+ * The department recommended for two choices: its slug, the reason the
+ * student reads, whether Claude or the rules made the pick, and a signed
+ * token that confirms exactly this recommendation. The pre-survey scores
+ * behind it are not returned: they are not shown until the final report.
  */
 const schema = z
   .object({
@@ -16,6 +18,13 @@ const schema = z
 export async function POST(request: Request) {
   return withUser(async (user) => {
     const { userChosenSlugs } = await parseBody(request, schema);
-    return { aiRecommendedSlug: await previewRecommendation(user.id, userChosenSlugs) };
+    const [locale, t] = await Promise.all([getLocale(), getT()]);
+    const { offer, token } = await previewRecommendation(user.id, userChosenSlugs, locale, t);
+    return {
+      aiRecommendedSlug: offer.recommended,
+      reason: offer.reason,
+      source: offer.source,
+      recommendationToken: token,
+    };
   });
 }

@@ -221,6 +221,28 @@ async function main() {
     secondPlan === null && afterSecond?.departmentSlugs.join() === 'sales,human-resources,strategy',
   );
 
+  // A plan of two: no recommendation, and only the two chosen.
+  const pairUser = await repo.createUser({ email: 'pg-pair@example.com', displayName: 'PG Pair' });
+  const pairPlan = pairUser
+    ? await repo.confirmDepartmentPlan(pairUser.id, {
+        userChosenSlugs: ['marketing', 'strategy'],
+        aiRecommendedSlug: null,
+        recommendationVersion: 'recommendation-v1',
+        recommendation: { size: 2 },
+      })
+    : null;
+  check(
+    'a plan of two confirms with no recommendation',
+    !!pairPlan?.confirmedAt && pairPlan.departmentSlugs.join() === 'marketing,strategy' && pairPlan.aiRecommendedSlug === null,
+  );
+
+  // The generated report: the latest record is the one read back.
+  check('no generated report at first', (await repo.getCareerReport(user.id)) === null);
+  await repo.saveCareerReport(user.id, { kind: 'synthesis', n: 1 });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await repo.saveCareerReport(user.id, { kind: 'synthesis', n: 2 });
+  check('the latest generated report is read back', (await repo.getCareerReport(user.id))?.payload.n === 2);
+
   // The post-survey: drafts until submitted, submitted once, then frozen.
   const surveyInput = (b5: number) => ({
     surveyVersion: 'post-survey-v1.0',

@@ -80,6 +80,9 @@ export default defineConfig({
           // also require the in-memory store; no deployment sets this.
           X_PASS_TEST_FIXTURES: '1',
           OPENAI_API_KEY: '',
+          // Likewise for Claude: the department recommendation and the report
+          // summary use their rule-based versions, which the specs assert.
+          ANTHROPIC_API_KEY: '',
           // No DATABASE_URL: production + no URL is demo mode, which is what we
           // want to exercise. Blank it out so a developer's .env cannot point
           // the suite at a real database and write test rows into it.
