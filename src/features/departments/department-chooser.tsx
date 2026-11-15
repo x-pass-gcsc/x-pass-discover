@@ -30,8 +30,17 @@ const GLYPHS: Record<string, string> = {
 
 type Step = 'choose' | 'recommend' | 'confirm';
 
+type Offer = {
+  slug: string;
+  reason: string;
+  source: 'claude' | 'rules';
+  token: string;
+};
+
 type CardOptions = {
   badge?: ReactNode;
+  /** A line under the description: why a department was recommended. */
+  note?: ReactNode;
   footer?: ReactNode;
   onSelect?: () => void;
   selected?: boolean;
@@ -39,16 +48,17 @@ type CardOptions = {
 };
 
 /**
- * The reception desk's department chooser: the "two chosen + one recommended"
- * plan.
+ * The reception desk's department chooser: a plan of two or three.
  *
  *   A. the student chooses exactly two departments;
- *   B. one of the other three is recommended for them (by the server, from
- *      their pre-survey — the slug only, never the scores behind it);
- *   C. they review the three and confirm.
+ *   B. optionally, one of the other three is recommended for them — by
+ *      Claude on the server, or by the rules when no key is set — as the
+ *      department they would least expect, with a reason (never the scores
+ *      behind it). They can take it (three) or leave it (two);
+ *   C. they review the plan and confirm.
  *
  * Until they confirm, they can change their two and the recommendation is
- * worked out again. Once confirmed, the desk shows their three departments to
+ * worked out again. Once confirmed, the desk shows their departments to
  * start or resume. A bootcamp started before the plan existed can always be
  * resumed. Whether a department can be played comes from its own status, so a
  * scenario added later opens here with no change to this component.
@@ -72,7 +82,10 @@ export function DepartmentChooser({
   const toast = useToast();
   const t = useT();
   const [chosen, setChosen] = useState<string[]>([]);
-  const [recommended, setRecommended] = useState<string | null>(null);
+  const [offer, setOffer] = useState<Offer | null>(null);
+  /** Whether the plan being reviewed takes the recommendation (three) or not (two). */
+  const [withPick, setWithPick] = useState(false);
+  const recommended = withPick ? (offer?.slug ?? null) : null;
   const [step, setStep] = useState<Step>('choose');
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -109,7 +122,8 @@ export function DepartmentChooser({
   }
 
   function toggle(slug: string) {
-    setRecommended(null);
+    setOffer(null);
+    setWithPick(false);
     setChosen((prev) => {
       if (prev.includes(slug)) return prev.filter((s) => s !== slug);
       if (prev.length >= 2) {
@@ -130,7 +144,13 @@ export function DepartmentChooser({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? t('plan.recommendFailed'));
-      setRecommended(data.aiRecommendedSlug);
+      setOffer({
+        slug: data.aiRecommendedSlug,
+        reason: data.reason,
+        source: data.source,
+        token: data.recommendationToken,
+      });
+      setWithPick(true);
       setStep('recommend');
     } catch (cause) {
       toast.push({
@@ -143,19 +163,29 @@ export function DepartmentChooser({
     }
   }
 
+  function reviewTwo() {
+    setWithPick(false);
+    setStep('confirm');
+  }
+
   async function confirmPlan() {
-    if (!recommended) return;
+    if (withPick && !offer) return;
     setBusy('confirm');
     try {
       const response = await fetch('/api/departments/selection', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ userChosenSlugs: chosen, aiRecommendedSlug: recommended }),
+        body: JSON.stringify({
+          userChosenSlugs: chosen,
+          recommendationToken: withPick ? offer?.token : null,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
-        // The answers behind it changed: show the new recommendation first.
-        if (data.code === 'recommendation_mismatch') await fetchRecommendation();
+        // The offer went stale: show a fresh recommendation first.
+        if (data.code === 'recommendation_mismatch' || data.code === 'recommendation_expired') {
+          await fetchRecommendation();
+        }
         throw new Error(data.error ?? t('plan.confirmFailed'));
       }
       toast.push({ tone: 'success', title: t('plan.confirmed') });
@@ -241,6 +271,7 @@ export function DepartmentChooser({
         </div>
         <p className="mt-3 text-sm font-medium text-strong">{department.projectTitle}</p>
         <p className="mt-1.5 text-xs leading-relaxed text-muted">{department.description}</p>
+        {options.note}
       </>
     );
     return (
@@ -291,6 +322,17 @@ export function DepartmentChooser({
     );
   }
 
+  function reasonNote(reason: string) {
+    return (
+      <p
+        className="mt-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-[11px] leading-relaxed text-body"
+        data-testid="plan-reason"
+      >
+        <span className="font-semibold text-strong">{t('plan.reasonTitle')}</span> {reason}
+      </p>
+    );
+  }
+
   // ------------------------------------------------------------ confirmed
 
   if (plan.confirmed) {
@@ -298,7 +340,9 @@ export function DepartmentChooser({
     return (
       <div className="space-y-5" data-testid="department-plan" data-plan-state="confirmed">
         <div className="rounded-2xl border border-line bg-sunken px-4 py-3">
-          <p className="text-sm font-semibold text-strong">{t('plan.confirmedTitle')}</p>
+          <p className="text-sm font-semibold text-strong">
+            {t('plan.confirmedTitle', { count: plan.departmentSlugs.length })}
+          </p>
           <p className="mt-0.5 text-[11px] text-muted">{t('plan.confirmedBody')}</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -308,6 +352,7 @@ export function DepartmentChooser({
             const ai = slug === plan.aiRecommendedSlug;
             return card(department, {
               role: ai ? 'recommended' : 'chosen',
+              note: ai && plan.recommendationReason ? reasonNote(plan.recommendationReason) : null,
               badge: ai ? (
                 <Badge tone="brand">{t('plan.aiBadge')}</Badge>
               ) : (
@@ -365,9 +410,9 @@ export function DepartmentChooser({
     ['recommend', 'plan.step.recommend'],
     ['confirm', 'plan.step.confirm'],
   ];
-  const recommendedDepartment = recommended ? bySlug(recommended) : undefined;
-  const three = [...chosen, ...(recommended ? [recommended] : [])];
-  const notPlayable = three
+  const recommendedDepartment = offer ? bySlug(offer.slug) : undefined;
+  const planSlugs = [...chosen, ...(recommended ? [recommended] : [])];
+  const notPlayable = planSlugs
     .map(bySlug)
     .filter((d): d is DepartmentDefinition => !!d && d.status !== 'playable');
 
@@ -424,15 +469,26 @@ export function DepartmentChooser({
                 · {t('plan.chooseHint')}
               </p>
             </div>
-            <Button
-              size="sm"
-              onClick={fetchRecommendation}
-              loading={busy === 'recommend'}
-              disabled={chosen.length !== 2 || !preSurveyComplete}
-              data-testid="plan-see-recommendation"
-            >
-              {t('plan.seeRecommendation')}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={reviewTwo}
+                disabled={chosen.length !== 2 || !preSurveyComplete || busy === 'recommend'}
+                data-testid="plan-two-only"
+              >
+                {t('plan.twoOnly')}
+              </Button>
+              <Button
+                size="sm"
+                onClick={fetchRecommendation}
+                loading={busy === 'recommend'}
+                disabled={chosen.length !== 2 || !preSurveyComplete}
+                data-testid="plan-see-recommendation"
+              >
+                {t('plan.seeRecommendation')}
+              </Button>
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {departments.map((department) => {
@@ -449,8 +505,13 @@ export function DepartmentChooser({
         </>
       ) : null}
 
-      {step === 'recommend' && recommendedDepartment ? (
-        <div className="space-y-4" data-testid="plan-recommendation" data-recommended={recommendedDepartment.slug}>
+      {step === 'recommend' && offer && recommendedDepartment ? (
+        <div
+          className="space-y-4"
+          data-testid="plan-recommendation"
+          data-recommended={recommendedDepartment.slug}
+          data-recommendation-source={offer.source}
+        >
           <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3">
             <p className="text-sm font-semibold text-strong">{t('plan.recommendTitle')}</p>
             <p className="mt-0.5 text-xs text-body">{t('plan.recommendBody')}</p>
@@ -459,27 +520,46 @@ export function DepartmentChooser({
             {card(recommendedDepartment, {
               role: 'recommended',
               badge: <Badge tone="brand">{t('plan.aiBadge')}</Badge>,
+              note: (
+                <>
+                  {reasonNote(offer.reason)}
+                  <p className="mt-1.5 text-[10px] text-subtle" data-testid="plan-reason-source">
+                    {t(offer.source === 'claude' ? 'plan.source.claude' : 'plan.source.rules')}
+                  </p>
+                </>
+              ),
             })}
           </div>
           <div className="flex flex-wrap justify-end gap-3">
             <Button variant="secondary" onClick={() => setStep('choose')}>
               {t('plan.back')}
             </Button>
-            <Button onClick={() => setStep('confirm')} data-testid="plan-review">
+            <Button variant="secondary" onClick={reviewTwo} data-testid="plan-use-two">
+              {t('plan.useTwo')}
+            </Button>
+            <Button
+              onClick={() => {
+                setWithPick(true);
+                setStep('confirm');
+              }}
+              data-testid="plan-review"
+            >
               {t('plan.next')}
             </Button>
           </div>
         </div>
       ) : null}
 
-      {step === 'confirm' && recommended ? (
-        <div className="space-y-4" data-testid="plan-review-three">
+      {step === 'confirm' && chosen.length === 2 ? (
+        <div className="space-y-4" data-testid="plan-review-three" data-plan-size={planSlugs.length}>
           <div className="rounded-2xl border border-line bg-sunken px-4 py-3">
-            <p className="text-sm font-semibold text-strong">{t('plan.confirmTitle')}</p>
+            <p className="text-sm font-semibold text-strong">
+              {t('plan.confirmTitle', { count: planSlugs.length })}
+            </p>
             <p className="mt-0.5 text-xs text-muted">{t('plan.confirmBody')}</p>
           </div>
           <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-            {three.map((slug, index) => {
+            {planSlugs.map((slug, index) => {
               const department = bySlug(slug);
               if (!department) return null;
               const ai = slug === recommended;
@@ -519,14 +599,26 @@ export function DepartmentChooser({
             <Button
               variant="secondary"
               onClick={() => {
-                setRecommended(null);
+                setOffer(null);
+                setWithPick(false);
                 setStep('choose');
               }}
             >
               {t('plan.back')}
             </Button>
+            {offer && !withPick ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setWithPick(true);
+                }}
+                data-testid="plan-take-pick"
+              >
+                {t('plan.takePick')}
+              </Button>
+            ) : null}
             <Button onClick={confirmPlan} loading={busy === 'confirm'} data-testid="plan-confirm">
-              {t('plan.confirm')}
+              {t('plan.confirm', { count: planSlugs.length })}
             </Button>
           </div>
         </div>

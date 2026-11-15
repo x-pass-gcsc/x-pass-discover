@@ -3,8 +3,10 @@ import { scorePreSurvey50 } from '@/content/pre-survey-rubric-v1';
 import { getRepository } from '@/db/repository';
 import { planFrom } from '@/services/departments/plan-service';
 
-/** How many departments a student explores before the final report. */
-export const REQUIRED_DEPARTMENTS = 3;
+/** How many departments a plan may hold: two chosen, plus one recommended or not. */
+export const PLAN_SIZES = [2, 3] as const;
+/** What the report page assumes before a plan is confirmed. */
+export const DEFAULT_PLAN_SIZE = 3;
 
 /**
  * Whether a student may see their final report — and with it, anything that
@@ -15,8 +17,8 @@ export const REQUIRED_DEPARTMENTS = 3;
  * tries or how they behave in them. The report opens only when all three hold:
  *
  *   1. the 50-question pre-survey is complete,
- *   2. the 2+1 department plan is confirmed (two chosen, one recommended),
- *      and each of its three departments has a completed bootcamp,
+ *   2. the department plan is confirmed (two chosen, plus one recommended
+ *      or not), and each of its departments has a completed bootcamp,
  *   3. the post-survey has been submitted.
  *
  * Every check reads real records only; nothing is assumed done.
@@ -24,10 +26,12 @@ export const REQUIRED_DEPARTMENTS = 3;
 export type ReportAccess = {
   unlocked: boolean;
   preSurveyComplete: boolean;
-  /** Whether the 2+1 plan is confirmed. */
+  /** Whether the plan is confirmed. */
   planConfirmed: boolean;
-  /** The plan's three departments; empty until it is confirmed. */
+  /** The plan's two or three departments; empty until it is confirmed. */
   confirmedDepartments: string[];
+  /** How many departments must be completed: the plan's size once confirmed. */
+  requiredDepartments: number;
   /** Those of them with a completed bootcamp. */
   completedDepartments: string[];
   postSurveySubmitted: boolean;
@@ -53,12 +57,13 @@ export async function getReportAccess(userId: string): Promise<ReportAccess> {
     unlocked:
       preSurveyComplete &&
       plan.confirmed &&
-      confirmedDepartments.length === REQUIRED_DEPARTMENTS &&
-      completedDepartments.length === REQUIRED_DEPARTMENTS &&
+      (PLAN_SIZES as readonly number[]).includes(confirmedDepartments.length) &&
+      completedDepartments.length === confirmedDepartments.length &&
       postSurveySubmitted,
     preSurveyComplete,
     planConfirmed: plan.confirmed,
     confirmedDepartments,
+    requiredDepartments: plan.confirmed ? confirmedDepartments.length : DEFAULT_PLAN_SIZE,
     completedDepartments,
     postSurveySubmitted,
   };

@@ -140,12 +140,12 @@ export type PreSurvey = {
 
 export type DepartmentSelection = {
   userId: string;
-  /** Once confirmed: the three, chosen first, the recommendation last. */
+  /** Once confirmed: the plan's two or three, chosen first, the recommendation last. */
   departmentSlugs: string[];
   selectedAt: string;
   /** The two the student chose. Null on a record from before the 2+1 plan. */
   userChosenSlugs?: string[] | null;
-  /** The one recommended for them. */
+  /** The one recommended for them; null in a plan of two. */
   aiRecommendedSlug?: string | null;
   recommendationVersion?: string | null;
   /** The recommendation's reasons and scores, kept for the final report. */
@@ -168,16 +168,28 @@ export type CareerPostSurvey = {
   submittedAt: string | null;
 };
 
+/**
+ * A generated part of the final report, kept so it is not generated again on
+ * every visit (the synthesis Claude writes). `payload` is versioned by its
+ * producer.
+ */
+export type CareerReportRecord = {
+  userId: string;
+  payload: Record<string, unknown>;
+  generatedAt: string;
+};
+
 /** What a save or a submission writes. */
 export type CareerPostSurveyInput = Pick<
   CareerPostSurvey,
   'surveyVersion' | 'departmentSlugs' | 'departmentAnswers' | 'comparisonAnswers' | 'experienceAnswers'
 >;
 
-/** A confirmed 2+1 department plan, as it is saved. */
+/** A confirmed department plan (two chosen, plus one recommended or none), as it is saved. */
 export type ConfirmDepartmentPlanInput = {
   userChosenSlugs: string[];
-  aiRecommendedSlug: string;
+  /** Null in a plan of two. */
+  aiRecommendedSlug: string | null;
   recommendationVersion: string;
   recommendation: Record<string, unknown>;
 };

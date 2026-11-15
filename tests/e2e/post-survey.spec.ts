@@ -11,15 +11,14 @@ import { confirmDepartments, signUpAsNewStudent, surveyAnswers } from './helpers
 const DEPT = { a1: 6, a2: 5, a3: 4, a4: 7, a5: 4, a6: ['decision'], a7: ['data'] };
 
 function fullAnswers(plan: string[]) {
+  const interest = [7, 3, 5];
   return {
-    departmentAnswers: {
-      [plan[0]]: { ...DEPT, a1: 7, a8: 'The negotiation changed my mind.' },
-      [plan[1]]: { ...DEPT, a1: 3 },
-      [plan[2]]: { ...DEPT, a1: 5 },
-    },
+    departmentAnswers: Object.fromEntries(
+      plan.map((slug, i) => [slug, { ...DEPT, a1: interest[i], ...(i === 0 ? { a8: 'The negotiation changed my mind.' } : {}) }]),
+    ),
     comparisonAnswers: {
       b1Mode: 'ranked',
-      b1Order: [plan[2], plan[0], plan[1]],
+      b1Order: plan.length === 3 ? [plan[2], plan[0], plan[1]] : [plan[1], plan[0]],
       b2: ['process', 'learn'],
       b3: 'yes',
       b3Text: 'I like structured problems.',
@@ -56,7 +55,7 @@ test('the post-survey stays locked until the pre-survey, the plan and all three 
   // Pre-survey, but no plan.
   expect((await page.request.post('/api/pre-survey', { data: { answers: surveyAnswers(4) } })).ok()).toBe(true);
   await page.goto('/post-survey');
-  await expect(page.getByTestId('post-locked')).toContainText('Confirm your three departments');
+  await expect(page.getByTestId('post-locked')).toContainText('Confirm your departments');
 
   // Plan, two of three completed.
   const plan = await planFor(page);
@@ -142,6 +141,46 @@ test('after three departments the survey is answered, saved, restored, submitted
   await expect(summary).toContainText('no before/after change');
   await expect(page.getByText('NE').first()).toBeVisible();
   await expect(page.getByTestId('pre-like-breakdown')).toBeVisible();
+
+  // One overall report: a summary on top, then before, during and after.
+  const synthesis = page.getByTestId('report-synthesis');
+  await expect(synthesis).toHaveAttribute('data-synthesis-source', 'rules');
+  // The student ranked the recommended department first after the work.
+  await expect(page.getByTestId('report-synthesis-headline')).toContainText('is the direction you most want to explore');
+  await expect(synthesis).toContainText('the department AI picked for you');
+  const journey = page.getByTestId('report-journey');
+  for (const slug of plan) await expect(journey.locator(`[data-journey-row="${slug}"]`)).toBeVisible();
+  await expect(journey.locator(`[data-journey-row="${plan[2]}"]`)).toContainText('#1 of 3 to explore next');
+  for (const stage of ['before', 'during', 'after']) {
+    await expect(page.locator(`[data-report-stage="${stage}"]`)).toBeVisible();
+  }
+  await expect(page.getByTestId('report-plan-reason')).not.toBeEmpty();
+  await expect(page.getByTestId('report-behavior').locator('[data-behavior-department]')).toHaveCount(3);
+});
+
+test('a plan of two: the post-survey and the report cover the two', async ({ page }) => {
+  await signUpAsNewStudent(page, 'Pair Reporter');
+  expect(await confirmDepartments(page, ['sales', 'human-resources'], { size: 2 })).toBeNull();
+  const plan = ['sales', 'human-resources'];
+  expect((await complete(page, plan)).ok()).toBe(true);
+
+  await page.goto('/report');
+  await expect(page.locator('[data-report-step="departments"]')).toContainText('2/2');
+  await expect(page.locator('[data-report-step="post-survey"]')).toHaveAttribute('data-report-step-state', 'ready');
+
+  // A ranking must hold exactly the two.
+  const three = fullAnswers(plan);
+  three.comparisonAnswers.b1Order = ['sales', 'human-resources', 'strategy'];
+  expect((await saveDraft(page, three)).status()).toBe(400);
+  expect((await submit(page, fullAnswers(plan))).ok()).toBe(true);
+
+  await page.goto('/report');
+  await expect(page.getByTestId('report-locked')).toHaveCount(0);
+  await expect(page.getByTestId('report-plan')).toContainText('The two you chose yourself.');
+  await expect(page.getByTestId('report-plan-reason')).toHaveCount(0);
+  await expect(page.getByTestId('report-synthesis')).toContainText('the two departments you picked yourself');
+  await expect(page.getByTestId('report-journey').locator('[data-journey-row]')).toHaveCount(2);
+  await expect(page.getByTestId('report-behavior').locator('[data-behavior-department]')).toHaveCount(2);
 });
 
 test('answers are checked on the server and belong only to the signed-in student', async ({ page, browser }) => {
@@ -190,9 +229,9 @@ test('the post-survey reads in Korean, Japanese and English', async ({ page, con
   const plan = await planFor(page);
   expect((await complete(page, plan)).ok()).toBe(true);
   for (const [locale, title, question] of [
-    ['ko', '세 부서 체험을 모두 마쳤습니다', '이번 업무 자체가 얼마나 흥미로웠나요?'],
-    ['ja', '3つの部署をすべて終えました', '今回の業務そのものは、どれくらい面白かったですか？'],
-    ['en', 'You finished all three departments', 'How interesting was the work itself?'],
+    ['ko', '모든 부서를 마쳤습니다', '이번 업무 자체가 얼마나 흥미로웠나요?'],
+    ['ja', 'すべての部署を終えました', '今回の業務そのものは、どれくらい面白かったですか？'],
+    ['en', 'You finished all of your departments', 'How interesting was the work itself?'],
   ] as const) {
     await context.addCookies([{ name: 'xpass-locale', value: locale, url: page.url() }]);
     await page.goto('/post-survey');

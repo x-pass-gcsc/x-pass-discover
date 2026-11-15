@@ -9,6 +9,7 @@ import type {
   AiMessage,
   BehaviorEvent,
   CareerPostSurvey,
+  CareerReportRecord,
   CareerPostSurveyInput,
   ConfirmDepartmentPlanInput,
   DepartmentSelection,
@@ -35,6 +36,7 @@ type FileShape = {
   preSurveys: PreSurvey[];
   departmentSelections: DepartmentSelection[];
   careerPostSurveys: CareerPostSurvey[];
+  careerReports: CareerReportRecord[];
   sessions: ProjectSession[];
   stepProgress: StepProgress[];
   answers: TaskAnswer[];
@@ -51,6 +53,7 @@ const EMPTY: FileShape = {
   preSurveys: [],
   departmentSelections: [],
   careerPostSurveys: [],
+  careerReports: [],
   sessions: [],
   stepProgress: [],
   answers: [],
@@ -278,7 +281,9 @@ export class FileRepository implements XPassRepository {
       const at = now();
       const record: DepartmentSelection = {
         userId,
-        departmentSlugs: [...plan.userChosenSlugs, plan.aiRecommendedSlug],
+        departmentSlugs: plan.aiRecommendedSlug
+        ? [...plan.userChosenSlugs, plan.aiRecommendedSlug]
+        : [...plan.userChosenSlugs],
         selectedAt: at,
         userChosenSlugs: plan.userChosenSlugs,
         aiRecommendedSlug: plan.aiRecommendedSlug,
@@ -288,6 +293,25 @@ export class FileRepository implements XPassRepository {
       };
       if (idx >= 0) d.departmentSelections[idx] = record;
       else d.departmentSelections.push(record);
+      return record;
+    });
+  }
+
+  // --- career report -----------------------------------------------------
+
+  async getCareerReport(userId: string) {
+    return this.read((d) => {
+      const rows = d.careerReports.filter((r) => r.userId === userId);
+      return rows.length ? rows[rows.length - 1] : null;
+    });
+  }
+
+  async saveCareerReport(userId: string, payload: Record<string, unknown>) {
+    return this.mutate((d) => {
+      const record: CareerReportRecord = { userId, payload, generatedAt: now() };
+      // One per student is enough: the latest replaces the rest.
+      d.careerReports = d.careerReports.filter((r) => r.userId !== userId);
+      d.careerReports.push(record);
       return record;
     });
   }

@@ -98,6 +98,8 @@ test('two are chosen, one is recommended, and the three are confirmed', async ({
   const recommended = (await recommendation.getAttribute('data-recommended')) ?? '';
   expect(['product-management', 'strategy', 'human-resources']).toContain(recommended);
   await expect(recommendation).toContainText('AI Recommendation');
+  await expect(recommendation.getByTestId('plan-reason')).toContainText('You picked Sales and Marketing');
+  await expect(recommendation.getByTestId('plan-reason-source')).toContainText('recommendation rules');
   await expect(page.getByTestId('department-desk')).not.toContainText(/Pre-LIKE|\d+ out of 100/);
 
   // C: the three, then confirm.
@@ -135,41 +137,60 @@ test('the plan rules hold over the API', async ({ page }) => {
   await signUpAsNewStudent(page, 'Rule Tester');
   const recommend = (userChosenSlugs: unknown) =>
     page.request.post('/api/departments/recommendation', { data: { userChosenSlugs } });
-  const confirm = (userChosenSlugs: unknown, aiRecommendedSlug: unknown) =>
-    page.request.post('/api/departments/selection', { data: { userChosenSlugs, aiRecommendedSlug } });
+  const confirm = (userChosenSlugs: unknown, recommendationToken?: unknown) =>
+    page.request.post('/api/departments/selection', { data: { userChosenSlugs, recommendationToken } });
 
-  // No pre-survey: no recommendation, no confirmation.
+  // No pre-survey: no recommendation, no confirmation of either size.
   const response = await recommend(['sales', 'marketing']);
   expect(response.status()).toBe(400);
   expect((await response.json()).code).toBe('pre_survey_incomplete');
-  expect((await confirm(['sales', 'marketing'], 'strategy')).status()).toBe(400);
+  expect((await confirm(['sales', 'marketing'])).status()).toBe(400);
 
   expect((await page.request.post('/api/pre-survey', { data: { answers: surveyAnswers(3) } })).ok()).toBe(true);
 
   // Exactly two different, known departments.
   for (const bad of [['sales'], ['sales', 'sales'], ['sales', 'marketing', 'strategy'], ['sales', 'finance']]) {
     expect((await recommend(bad)).status(), `${bad} should be refused`).toBe(400);
+    expect((await confirm(bad)).status(), `${bad} should not confirm`).toBe(400);
   }
 
-  // The same answers and choices give the same recommendation.
-  const first = (await (await recommend(['sales', 'human-resources'])).json()).aiRecommendedSlug;
-  const second = (await (await recommend(['sales', 'human-resources'])).json()).aiRecommendedSlug;
-  expect(first).toBe(second);
-  expect(['marketing', 'strategy', 'product-management']).toContain(first);
-  // Only the slug comes back — no scores.
-  expect(Object.keys(await (await recommend(['sales', 'human-resources'])).json())).toEqual(['aiRecommendedSlug']);
+  // A recommendation: one of the three not chosen, with a reason — and no scores.
+  const offer = await (await recommend(['sales', 'human-resources'])).json();
+  expect(['marketing', 'strategy', 'product-management']).toContain(offer.aiRecommendedSlug);
+  expect(Object.keys(offer).sort()).toEqual(['aiRecommendedSlug', 'reason', 'recommendationToken', 'source']);
+  expect(offer.reason.length).toBeGreaterThan(20);
+  expect(offer.reason).not.toMatch(/[0-9]/);
+  // With no key on the test server, the rules make it — and they are deterministic.
+  expect(offer.source).toBe('rules');
+  expect((await (await recommend(['sales', 'human-resources'])).json()).aiRecommendedSlug).toBe(offer.aiRecommendedSlug);
 
-  // A third department other than the recommendation cannot be slipped in.
-  const other = ['marketing', 'strategy', 'product-management'].find((slug) => slug !== first)!;
-  for (const tampered of [other, 'sales', 'finance']) {
+  // The third department can only come from the signed offer.
+  const [body, signature] = offer.recommendationToken.split('.');
+  const other = ['marketing', 'strategy', 'product-management'].find((slug) => slug !== offer.aiRecommendedSlug)!;
+  const forged = Buffer.from(
+    JSON.stringify({ ...JSON.parse(Buffer.from(body, 'base64url').toString()), recommended: other }),
+  ).toString('base64url');
+  for (const tampered of [`${forged}.${signature}`, 'not-a-token', offer.aiRecommendedSlug]) {
     const refused = await confirm(['sales', 'human-resources'], tampered);
     expect(refused.status(), `${tampered} should be refused`).toBe(400);
   }
-  expect((await confirm(['sales', 'human-resources', first], first)).status()).toBe(400);
+  const otherChoices = await confirm(['sales', 'strategy'], offer.recommendationToken);
+  expect(otherChoices.status()).toBe(400);
+  expect((await otherChoices.json()).code).toBe('recommendation_mismatch');
+  // The old shape of the request is refused rather than silently read as a plan of two.
+  const oldShape = await page.request.post('/api/departments/selection', {
+    data: { userChosenSlugs: ['sales', 'human-resources'], aiRecommendedSlug: offer.aiRecommendedSlug },
+  });
+  expect(oldShape.status()).toBe(400);
 
-  // The right one confirms, once.
-  expect((await confirm(['sales', 'human-resources'], first)).ok()).toBe(true);
-  const again = await confirm(['marketing', 'strategy'], 'sales');
+  // The offer confirms a plan of three, once.
+  const confirmed = await confirm(['sales', 'human-resources'], offer.recommendationToken);
+  expect(confirmed.ok()).toBe(true);
+  const { plan } = await confirmed.json();
+  expect(plan.size).toBe(3);
+  expect(plan.departmentSlugs).toEqual(['sales', 'human-resources', offer.aiRecommendedSlug]);
+  expect(plan.recommendationReason).toBe(offer.reason);
+  const again = await confirm(['marketing', 'strategy']);
   expect(again.status()).toBe(400);
   expect((await again.json()).code).toBe('already_confirmed');
 
@@ -177,7 +198,7 @@ test('the plan rules hold over the API', async ({ page }) => {
   const outside = await page.request.post('/api/sessions', { data: { departmentSlug: other } });
   expect(outside.status()).toBe(400);
   expect((await outside.json()).code).toBe('not_in_plan');
-  const unplayable = await page.request.post('/api/sessions', { data: { departmentSlug: first } });
+  const unplayable = await page.request.post('/api/sessions', { data: { departmentSlug: offer.aiRecommendedSlug } });
   expect(unplayable.status(), 'a coming-soon department gets no session').toBe(400);
   expect((await unplayable.json()).code).toBe('not_playable');
   expect((await page.request.post('/api/sessions', { data: { departmentSlug: 'sales' } })).ok()).toBe(true);
@@ -185,6 +206,30 @@ test('the plan rules hold over the API', async ({ page }) => {
   // The report is still locked.
   await page.goto('/report');
   await expect(page.getByTestId('report-locked')).toBeVisible();
+});
+
+test('a plan of two: the two chosen, no recommendation, and a report that waits for two', async ({ page }) => {
+  await signUpAsNewStudent(page, 'Pair Planner');
+  await completePreSurvey(page);
+  await page.goto('/office?select=1');
+  await expect(page.getByTestId('department-plan')).toHaveAttribute('data-plan-state', 'choose');
+
+  await page.locator('[data-department-slug="sales"] button[aria-pressed]').click();
+  await page.locator('[data-department-slug="human-resources"] button[aria-pressed]').click();
+  // Look at the AI pick first, then decide to keep only the two.
+  await page.getByTestId('plan-see-recommendation').click();
+  await expect(page.getByTestId('plan-recommendation')).toBeVisible();
+  await expect(page.getByTestId('plan-reason')).not.toBeEmpty();
+  await page.getByTestId('plan-use-two').click();
+  await expect(page.getByTestId('plan-review-three')).toHaveAttribute('data-plan-size', '2');
+  await page.getByTestId('plan-confirm').click();
+
+  await expect(page.getByTestId('department-plan')).toHaveAttribute('data-plan-state', 'confirmed');
+  await expect(page.locator('[data-plan-role="recommended"]')).toHaveCount(0);
+  await expect(page.locator('[data-plan-role="chosen"]')).toHaveCount(2);
+
+  await page.goto('/report');
+  await expect(page.locator('[data-report-step="departments"]')).toContainText('0/2');
 });
 
 test('switching department keeps every bootcamp and its progress', async ({ page }) => {
@@ -246,10 +291,10 @@ test('the old departments address opens the desk in the office', async ({ page }
 test('the desk follows the language', async ({ page, context }) => {
   await signUpAsNewStudent(page, 'Polyglot');
   expect((await page.request.post('/api/pre-survey', { data: { answers: surveyAnswers(4) } })).ok()).toBe(true);
-  for (const [locale, title, next, aiBadge] of [
-    ['ko', 'BITE 리셉션', '추천 부서 보기', 'AI 추천'],
-    ['ja', 'BITE 受付', 'おすすめを見る', 'AI のおすすめ'],
-    ['en', 'BITE Reception', 'See my recommendation', 'AI Recommendation'],
+  for (const [locale, title, next, aiBadge, reason] of [
+    ['ko', 'BITE 리셉션', 'AI 추천 더하기 (3개)', 'AI 추천', '고르셨'],
+    ['ja', 'BITE 受付', 'AI のおすすめを加える（3つ）', 'AI のおすすめ', 'あなたが選んだのは'],
+    ['en', 'BITE Reception', 'Add an AI pick (3 departments)', 'AI Recommendation', 'You picked'],
   ] as const) {
     await context.addCookies([{ name: 'xpass-locale', value: locale, url: page.url() }]);
     await page.goto('/office?select=1');
@@ -261,5 +306,7 @@ test('the desk follows the language', async ({ page, context }) => {
     await desk.locator('[data-department-slug="human-resources"] button[aria-pressed]').click();
     await desk.getByRole('button', { name: next }).click();
     await expect(desk.getByTestId('plan-recommendation')).toContainText(aiBadge);
+    // The reason is written in the language too.
+    await expect(desk.getByTestId('plan-reason')).toContainText(reason);
   }
 });

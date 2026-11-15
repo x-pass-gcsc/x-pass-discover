@@ -1,5 +1,7 @@
 /**
- * Checks the 2+1 department recommendation (recommendation-v1).
+ * Checks the department plan (two chosen, plus one recommended or none), the
+ * rule-based recommendation (recommendation-v1) and the signed offer that
+ * carries a recommendation from the desk to the confirmation.
  *
  *   npm run verify:plan
  *
@@ -10,8 +12,19 @@
  *   - differs for the same answers and the same choices,
  *   - is just the highest Pre-LIKE, where a lower one has a standout area,
  *   - breaks a tie other than by the listed order, or gives no answer when no
- *     candidate shows an interest signal.
+ *     candidate shows an interest signal;
+ * and when an offer:
+ *   - is accepted after being changed, for another student, for other
+ *     choices, or once it is too old,
+ *   - carries a reason with a score in it (the rules' reason, with no key).
  */
+import { DICTIONARIES, translator } from '@/i18n/translate';
+import { signToken } from '@/lib/signed-token';
+import {
+  OFFER_TOKEN_PURPOSE,
+  checkOffer,
+  makeOffer,
+} from '@/services/departments/recommendation-offer';
 import { PS50_ROLE_RUBRICS, type RoleSlug } from '@/content/pre-survey-rubric-v1';
 import { planFrom } from '@/services/departments/plan-service';
 import {
@@ -121,9 +134,70 @@ check(
     confirmed.aiRecommendedSlug === 'strategy',
 );
 
-if (problems.length > 0) {
-  console.error(`\n✗ ${problems.length} of ${checks} recommendation check(s) failed:`);
-  for (const problem of problems) console.error(`  - ${problem}`);
-  process.exit(1);
+const two = planFrom({
+  userId: 'u',
+  departmentSlugs: ['sales', 'marketing'],
+  selectedAt: '2026-01-01T00:00:00Z',
+  userChosenSlugs: ['sales', 'marketing'],
+  aiRecommendedSlug: null,
+  recommendationVersion: RECOMMENDATION_VERSION,
+  confirmedAt: '2026-01-01T00:00:00Z',
+});
+check(
+  'a confirmed plan of two has no recommendation',
+  two.confirmed === true && two.size === 2 && two.departmentSlugs.join() === 'sales,marketing' && two.aiRecommendedSlug === null,
+);
+check('a confirmed plan of three says so', confirmed.confirmed === true && confirmed.size === 3);
+
+// ------------------------------------------------------------- the offer
+
+async function offers() {
+  const t = translator(DICTIONARIES.ja);
+  const nameOf = (slug: string) => slug.toUpperCase();
+  const { offer, token } = await makeOffer({
+    userId: 'u1',
+    answers: spiky,
+    chosen: ['sales', 'marketing'],
+    locale: 'ja',
+    t,
+    nameOf,
+  });
+  const candidates = ['strategy', 'human-resources', 'product-management'];
+  if (!process.env.ANTHROPIC_API_KEY) {
+    check('with no key the rules make the offer', offer.source === 'rules' && offer.recommended === 'product-management', offer);
+  }
+  check('the reason names the department and the area', offer.reason.includes('PRODUCT-MANAGEMENT') && offer.reason.includes(t('report.dim.problem_discovery')), offer.reason);
+  check('the reason has no number in it', !/[0-9０-９]/.test(offer.reason), offer.reason);
+  check('the offer is accepted as given', checkOffer(token, 'u1', ['sales', 'marketing'], candidates).ok);
+  check('the order of the two does not matter', checkOffer(token, 'u1', ['marketing', 'sales'], candidates).ok);
+  const fails = (label: string, result: ReturnType<typeof checkOffer>, reason: string) =>
+    check(label, !result.ok && result.reason === reason, result);
+  fails('another student cannot use it', checkOffer(token, 'u2', ['sales', 'marketing'], candidates), 'mismatch');
+  fails('other choices cannot use it', checkOffer(token, 'u1', ['sales', 'strategy'], ['marketing', 'human-resources', 'product-management']), 'mismatch');
+  const [body, sig] = token.split('.');
+  const changed = Buffer.from(
+    JSON.stringify({ ...JSON.parse(Buffer.from(body, 'base64url').toString()), recommended: 'strategy' }),
+  ).toString('base64url');
+  fails('a changed offer is refused', checkOffer(`${changed}.${sig}`, 'u1', ['sales', 'marketing'], candidates), 'invalid');
+  fails('garbage is refused', checkOffer('nope', 'u1', ['sales', 'marketing'], candidates), 'invalid');
+  const old = signToken(OFFER_TOKEN_PURPOSE, { ...offer, issuedAt: new Date(Date.now() - 7 * 3600_000).toISOString() });
+  fails('an old offer is refused', checkOffer(old, 'u1', ['sales', 'marketing'], candidates), 'expired');
+  const chosenAsThird = signToken(OFFER_TOKEN_PURPOSE, { ...offer, recommended: 'sales' });
+  fails('an offer of a chosen department is refused', checkOffer(chosenAsThird, 'u1', ['sales', 'marketing'], candidates), 'mismatch');
+  const otherPurpose = signToken('something-else', offer);
+  fails('a token made for something else is refused', checkOffer(otherPurpose, 'u1', ['sales', 'marketing'], candidates), 'invalid');
+  const noSignal = await makeOffer({ userId: 'u1', answers: by({}, 1), chosen: ['sales', 'marketing'], locale: 'en', t: translator(DICTIONARIES.en), nameOf });
+  check('with no signal the reason still reads well', noSignal.offer.reason.includes('SALES') && !noSignal.offer.reason.includes('{'), noSignal.offer.reason);
 }
-console.log(`✓ department recommendation: ${checks} checks passed`);
+
+
+function finish() {
+  if (problems.length > 0) {
+    console.error(`\n✗ ${problems.length} of ${checks} recommendation check(s) failed:`);
+    for (const problem of problems) console.error(`  - ${problem}`);
+    process.exit(1);
+  }
+  console.log(`✓ department recommendation: ${checks} checks passed`);
+}
+
+void offers().then(finish);

@@ -258,7 +258,9 @@ export class DrizzleRepository implements XPassRepository {
 
   async confirmDepartmentPlan(userId: string, plan: ConfirmDepartmentPlanInput) {
     const values = {
-      departmentSlugs: [...plan.userChosenSlugs, plan.aiRecommendedSlug],
+      departmentSlugs: plan.aiRecommendedSlug
+        ? [...plan.userChosenSlugs, plan.aiRecommendedSlug]
+        : [...plan.userChosenSlugs],
       selectedAt: new Date(),
       userChosenSlugs: plan.userChosenSlugs,
       aiRecommendedSlug: plan.aiRecommendedSlug,
@@ -278,6 +280,28 @@ export class DrizzleRepository implements XPassRepository {
       })
       .returning();
     return row ? toSelection(row) : null;
+  }
+
+  // --- career report -----------------------------------------------------
+
+  async getCareerReport(userId: string) {
+    const [row] = await this.db
+      .select()
+      .from(schema.careerReports)
+      .where(eq(schema.careerReports.userId, userId))
+      .orderBy(desc(schema.careerReports.generatedAt))
+      .limit(1);
+    return row
+      ? { userId: row.userId, payload: row.payload, generatedAt: row.generatedAt.toISOString() }
+      : null;
+  }
+
+  async saveCareerReport(userId: string, payload: Record<string, unknown>) {
+    const [row] = await this.db
+      .insert(schema.careerReports)
+      .values({ userId, payload })
+      .returning();
+    return { userId: row.userId, payload: row.payload, generatedAt: row.generatedAt.toISOString() };
   }
 
   // --- sessions -----------------------------------------------------------

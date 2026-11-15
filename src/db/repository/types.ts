@@ -5,6 +5,7 @@ import type {
   BehaviorEvent,
   BehaviorEventType,
   CareerPostSurvey,
+  CareerReportRecord,
   CareerPostSurveyInput,
   ConfirmDepartmentPlanInput,
   DepartmentSelection,
@@ -114,6 +115,12 @@ export interface XPassRepository {
    * concurrent submission), checked in the same write.
    */
   submitCareerPostSurvey(userId: string, input: CareerPostSurveyInput): Promise<CareerPostSurvey | null>;
+
+  // --- career report -----------------------------------------------------
+  /** The latest generated report record, or null. */
+  getCareerReport(userId: string): Promise<CareerReportRecord | null>;
+  /** Stores a new generated record; it becomes the latest. */
+  saveCareerReport(userId: string, payload: Record<string, unknown>): Promise<CareerReportRecord>;
 
   // --- sessions -----------------------------------------------------------
   createSession(input: CreateSessionInput): Promise<ProjectSession>;

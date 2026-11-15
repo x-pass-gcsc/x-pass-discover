@@ -3,7 +3,7 @@ import { Badge, Button, Card, CardHeader } from '@/components/ui';
 import type { DepartmentDefinition } from '@/types/scenario';
 import type { MessageKey } from '@/i18n/messages/en';
 import type { Translate } from '@/i18n/translate';
-import { REQUIRED_DEPARTMENTS, type ReportAccess } from '@/services/report/report-access';
+import type { ReportAccess } from '@/services/report/report-access';
 
 /**
  * The report before it opens: what is still to do, and nothing of the
@@ -22,11 +22,10 @@ export function ReportLocked({
   t: Translate;
 }) {
   const nameOf = (slug: string) => departments.find((d) => d.slug === slug)?.name ?? slug;
-  // The post-survey opens once the three departments are done.
-  const postSurveyReady =
-    access.preSurveyComplete &&
-    access.planConfirmed &&
-    access.completedDepartments.length >= REQUIRED_DEPARTMENTS;
+  // The post-survey opens once every department of the plan is done.
+  const required = access.requiredDepartments;
+  const departmentsDone = access.planConfirmed && access.completedDepartments.length >= required;
+  const postSurveyReady = access.preSurveyComplete && departmentsDone;
   const steps = [
     {
       key: 'pre-survey',
@@ -37,9 +36,9 @@ export function ReportLocked({
       key: 'departments',
       label: t('report.locked.departments', {
         done: access.completedDepartments.length,
-        total: REQUIRED_DEPARTMENTS,
+        total: required,
       }),
-      state: access.completedDepartments.length >= REQUIRED_DEPARTMENTS ? 'done' : 'todo',
+      state: departmentsDone ? 'done' : 'todo',
     },
     {
       key: 'post-survey',

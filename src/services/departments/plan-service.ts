@@ -1,6 +1,8 @@
 import 'server-only';
-import { getDepartment } from '@/content/departments';
+import { getDepartment, listLocalizedDepartments } from '@/content/departments';
 import { getRepository } from '@/db/repository';
+import type { Locale } from '@/i18n/config';
+import type { Translate } from '@/i18n/translate';
 import { ScenarioRuleError } from '@/lib/errors';
 import type { DepartmentSelection } from '@/types/runtime';
 import {
@@ -9,44 +11,57 @@ import {
   recommendDepartment,
   type DepartmentRecommendation,
 } from './recommendation';
+import { checkOffer, makeOffer, type RecommendationOffer } from './recommendation-offer';
 
 /**
- * The student's department plan: two departments they choose, one recommended
- * for them, confirmed once. Every rule is checked here, on the server — the
- * client only ever sends the two choices and the recommendation it was shown,
- * and the server recomputes the recommendation itself.
+ * The student's department plan: two or three departments, confirmed once.
  *
- * A selection saved before the 2+1 plan (a free pick of up to three) is left
+ *   two    the two departments the student chose, and nothing else;
+ *   three  those two, and one recommended for them — a department they did
+ *          not pick and would probably not have expected (see
+ *          `recommendation-offer.ts`).
+ *
+ * Every rule is checked here, on the server. The client sends the two choices
+ * and, for a plan of three, the signed offer it was shown; the third
+ * department is always the one in that offer and can never be set directly.
+ *
+ * A selection saved before plans existed (a free pick of up to three) is left
  * exactly as it was and counts as not confirmed. Its bootcamps keep going —
  * a session that exists can always be resumed — but a new department starts
  * only from a confirmed plan.
  */
+export type PlanSize = 2 | 3;
+
 export type DepartmentPlan =
   | {
       confirmed: true;
+      size: PlanSize;
       userChosenSlugs: string[];
-      aiRecommendedSlug: string;
-      /** The three, chosen first and the recommendation last. */
+      /** The recommended department; null in a plan of two. */
+      aiRecommendedSlug: string | null;
+      /** The departments of the plan, chosen first and the recommendation last. */
       departmentSlugs: string[];
+      /** Why the third was recommended, as the student was shown it. */
+      recommendationReason: string | null;
       confirmedAt: string;
     }
   | {
       confirmed: false;
-      /** What a pre-2+1 selection held, if there is one; not a plan. */
+      /** What a pre-plan selection held, if there is one; not a plan. */
       legacySlugs: string[];
     };
 
 export function planFrom(selection: DepartmentSelection | null): DepartmentPlan {
-  if (
-    selection?.confirmedAt &&
-    selection.aiRecommendedSlug &&
-    selection.userChosenSlugs?.length === 2
-  ) {
+  if (selection?.confirmedAt && selection.userChosenSlugs?.length === 2) {
+    const ai = selection.aiRecommendedSlug ?? null;
+    const offer = (selection.recommendation?.offer ?? null) as { reason?: unknown } | null;
     return {
       confirmed: true,
+      size: ai ? 3 : 2,
       userChosenSlugs: selection.userChosenSlugs,
-      aiRecommendedSlug: selection.aiRecommendedSlug,
-      departmentSlugs: [...selection.userChosenSlugs, selection.aiRecommendedSlug],
+      aiRecommendedSlug: ai,
+      departmentSlugs: ai ? [...selection.userChosenSlugs, ai] : [...selection.userChosenSlugs],
+      recommendationReason: typeof offer?.reason === 'string' ? offer.reason : null,
       confirmedAt: selection.confirmedAt,
     };
   }
@@ -69,60 +84,90 @@ function checkChoice(chosen: string[]) {
   }
 }
 
-async function recommendFor(userId: string, chosen: string[]): Promise<DepartmentRecommendation> {
-  checkChoice(chosen);
-  const survey = await getRepository().getPreSurvey(userId);
+async function surveyAnswers(userId: string) {
+  return (await getRepository().getPreSurvey(userId))?.answers ?? {};
+}
+
+function rulesFor(answers: Record<string, unknown>, chosen: string[]): DepartmentRecommendation {
   try {
-    return recommendDepartment(survey?.answers ?? {}, chosen);
+    return recommendDepartment(answers, chosen);
   } catch (error) {
     if (error instanceof RecommendationError) throw new ScenarioRuleError(error.message, error.code);
     throw error;
   }
 }
 
-/**
- * The department that would be recommended for these two choices. Returns the
- * slug only: the scores behind it stay on the server until the final report.
- */
-export async function previewRecommendation(userId: string, chosen: string[]): Promise<string> {
-  const plan = await getDepartmentPlan(userId);
-  if (plan.confirmed) {
+async function assertNotConfirmed(userId: string) {
+  if ((await getDepartmentPlan(userId)).confirmed) {
     throw new ScenarioRuleError('Your departments are already confirmed.', 'already_confirmed');
   }
-  return (await recommendFor(userId, chosen)).recommended;
 }
 
 /**
- * Confirms the plan: the two choices, and the recommendation the student was
- * shown — which must be the one the server computes now, so nothing else can
- * be slipped in as the third department.
+ * The department recommended for these two choices, with the reason the
+ * student reads and a signed token to confirm it with. The scores behind it
+ * stay on the server until the final report.
+ */
+export async function previewRecommendation(
+  userId: string,
+  chosen: string[],
+  locale: Locale,
+  t: Translate,
+): Promise<{ offer: RecommendationOffer; token: string }> {
+  await assertNotConfirmed(userId);
+  checkChoice(chosen);
+  const answers = await surveyAnswers(userId);
+  rulesFor(answers, chosen); // the same checks, as a ScenarioRuleError
+  const localized = listLocalizedDepartments(locale);
+  const nameOf = (slug: string) => localized.find((d) => d.slug === slug)?.name ?? slug;
+  const { offer, token } = await makeOffer({ userId, answers, chosen, locale, t, nameOf });
+  return { offer, token };
+}
+
+/**
+ * Confirms the plan. With no `offerToken`, a plan of the two chosen
+ * departments. With one, a plan of three: the token must be the offer this
+ * student was shown for these same two choices.
  */
 export async function confirmDepartmentPlan(
   userId: string,
   chosen: string[],
-  shownRecommendation: string,
+  offerToken: string | null,
 ): Promise<DepartmentPlan> {
   const repo = getRepository();
   const existing = await repo.getDepartmentSelection(userId);
   if (planFrom(existing).confirmed) {
     throw new ScenarioRuleError('Your departments are already confirmed.', 'already_confirmed');
   }
-  const recommendation = await recommendFor(userId, chosen);
-  if (recommendation.recommended !== shownRecommendation) {
-    throw new ScenarioRuleError(
-      'The recommendation has changed. Review it again before confirming.',
-      'recommendation_mismatch',
-    );
+  checkChoice(chosen);
+  const answers = await surveyAnswers(userId);
+  // The pre-survey comes first for either size: the final report reads it back.
+  const rules = rulesFor(answers, chosen);
+  const previousSelection = existing?.departmentSlugs.length
+    ? { previousSelection: existing.departmentSlugs }
+    : {};
+
+  let aiRecommendedSlug: string | null = null;
+  let recommendation: Record<string, unknown> = { size: 2, rules, ...previousSelection };
+  if (offerToken) {
+    const check = checkOffer(offerToken, userId, chosen, rules.candidates.map((c) => c.slug));
+    if (!check.ok) {
+      throw new ScenarioRuleError(
+        check.reason === 'expired'
+          ? 'The recommendation has expired. Ask for it again before confirming.'
+          : 'The recommendation does not match your choices. Ask for it again before confirming.',
+        check.reason === 'expired' ? 'recommendation_expired' : 'recommendation_mismatch',
+      );
+    }
+    aiRecommendedSlug = check.offer.recommended;
+    recommendation = { size: 3, offer: check.offer, rules, ...previousSelection };
   }
+
   const saved = await repo.confirmDepartmentPlan(userId, {
-    userChosenSlugs: recommendation.chosen,
-    aiRecommendedSlug: recommendation.recommended,
-    recommendationVersion: recommendation.version,
-    recommendation: {
-      ...recommendation,
-      // A pre-2+1 selection is replaced by the plan; what it held is kept here.
-      ...(existing?.departmentSlugs.length ? { previousSelection: existing.departmentSlugs } : {}),
-    },
+    userChosenSlugs: rules.chosen,
+    aiRecommendedSlug,
+    recommendationVersion: rules.version,
+    recommendation,
   });
   if (!saved) {
     throw new ScenarioRuleError('Your departments are already confirmed.', 'already_confirmed');
@@ -135,13 +180,13 @@ export async function assertCanStartDepartment(userId: string, departmentSlug: s
   const plan = await getDepartmentPlan(userId);
   if (!plan.confirmed) {
     throw new ScenarioRuleError(
-      'Confirm your three departments at the reception desk before starting a bootcamp.',
+      'Confirm your departments at the reception desk before starting a bootcamp.',
       'plan_not_confirmed',
     );
   }
   if (!plan.departmentSlugs.includes(departmentSlug)) {
     throw new ScenarioRuleError(
-      'This department is not one of your three confirmed departments.',
+      'This department is not one of your confirmed departments.',
       'not_in_plan',
     );
   }
