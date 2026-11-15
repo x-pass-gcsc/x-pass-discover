@@ -13,6 +13,7 @@ import {
   type Reward,
 } from '@/features/game/progress';
 import { WorkspaceClient } from '@/features/workspace/workspace-client';
+import { useSenpaiOpen } from '@/features/senpai/events';
 import { Minimap } from './minimap';
 import { ChatPanel } from '@/features/ai/chat-panel';
 import { ResourcePanel } from '@/features/resources/resource-panel';
@@ -229,7 +230,15 @@ export function OfficeClient({
   }, [sessionId, workStepKey]);
 
   // Walking pauses while anything you can type into is open over the office.
-  const paused = workStepKey !== null || dialogue !== null || intro || deskOpen || overlay.kind === 'chat';
+  // That includes the AI senpai's window, which floats over every page.
+  const senpaiOpen = useSenpaiOpen();
+  const paused =
+    workStepKey !== null ||
+    dialogue !== null ||
+    intro ||
+    deskOpen ||
+    overlay.kind === 'chat' ||
+    senpaiOpen;
   useEffect(() => {
     bridge.command({ type: 'controls', enabled: !paused });
   }, [bridge, paused, booted]);

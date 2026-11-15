@@ -832,6 +832,25 @@ export const en = {
   'mypage.bootcamps.started': 'Started {date}',
   'mypage.bootcamps.open': 'Open',
   'mypage.bootcamps.report': 'Career report →',
+
+  'senpai.open': "Ask a senior",
+  'senpai.title': "AI Senior",
+  'senpai.subtitle': "Ask me anything, any time",
+  'senpai.hello': "Hi {name}! Stuck on a task, unsure which department suits you, or just curious what work is really like? Ask me anything.",
+  'senpai.placeholder': "Ask your senior anything…",
+  'senpai.send': "Send",
+  'senpai.close': "Close",
+  'senpai.clear': "Start over",
+  'senpai.offline': "Offline mode: no AI API key is set, so I can only give canned tips.",
+  'senpai.notScored': "Nothing you ask here is scored.",
+  'senpai.suggest1': "How should I choose a department?",
+  'senpai.suggest2': "I am stuck on this step. Where do I start?",
+  'senpai.suggest3': "What makes a good question in a meeting?",
+  'senpai.thinking': "Thinking…",
+  'senpai.error': "Your senior could not answer just now. Please try again.",
+  'senpai.rateLimited': "That is a lot of questions in a short time. Try again in about {seconds} seconds.",
+  'senpai.tooLong': "Please keep a question under 2,000 characters.",
+  'senpai.declined': "Your senior cannot help with that one. Try asking another way.",
 } as const;
 
 export type MessageKey = keyof typeof en;
